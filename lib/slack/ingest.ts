@@ -32,7 +32,7 @@ async function processStoredMessage(db:Database,channel:Channel,message:Message)
 }
 
 export async function ingestSlackEvent(payload:SlackEventCallback){
-  const db=getDb();if(!db)return {status:"database-not-configured" as const};const event=normalizeSlackMessageEvent(payload.event as SlackMessageEvent);
+  const db=getDb("ingestion");if(!db)return {status:"database-not-configured" as const};const event=normalizeSlackMessageEvent(payload.event as SlackMessageEvent);
   if(!event)return {status:"ignored" as const};
   return db.transaction(async tx=>{
     const [channel]=await tx.select().from(slackChannels).where(and(eq(slackChannels.workspaceId,payload.team_id),eq(slackChannels.slackChannelId,event.channel),eq(slackChannels.active,true))).limit(1);

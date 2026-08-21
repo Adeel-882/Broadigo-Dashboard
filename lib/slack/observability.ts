@@ -64,7 +64,7 @@ export async function recordSlackEventOutcome(outcome: SlackEventOutcome) {
   if (outcome.result === "error" || outcome.errorMessage) console.error(line);
   else console.log(line);
 
-  const db = getDb();
+  const db = getDb("ingestion");
   if (!db) return;
   try {
     await db.insert(slackIngestLog).values({

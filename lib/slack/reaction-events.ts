@@ -12,7 +12,7 @@ import type { SlackReactionEvent, SlackReactionEventCallback } from "@/lib/slack
  * writes to `slack_messages.reactions` and the derived columns on `leads` alone.
  */
 export async function ingestSlackReactionEvent(payload: SlackReactionEventCallback) {
-  const db = getDb();
+  const db = getDb("ingestion");
   if (!db) return { status: "database-not-configured" as const };
   const event = payload.event as SlackReactionEvent;
   if (event.item?.type !== "message") return { status: "ignored" as const, reason: "item-type" };
