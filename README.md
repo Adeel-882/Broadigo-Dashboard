@@ -54,21 +54,20 @@ For a local PostgreSQL installation instead:
    SLACK_BOT_TOKEN=PASTE_YOUR_EXISTING_BOT_TOKEN_HERE
    SLACK_SIGNING_SECRET=PASTE_YOUR_EXISTING_SIGNING_SECRET_HERE
    SLACK_WORKSPACE_ID=PASTE_YOUR_WORKSPACE_ID_HERE
-   CEO_EMAIL=your-real-ceo-email@example.com
-   CEO_PASSWORD_HASH=PASTE_GENERATED_HASH_HERE
    SESSION_SECRET=PASTE_A_RANDOM_STRING_OF_AT_LEAST_32_CHARACTERS_HERE
    DEMO_AUTH_BYPASS=false
    DEMO_DATA_ENABLED=false
    ```
 
-3. Generate the CEO password hash:
+3. Generate `SESSION_SECRET` with a password manager or another cryptographically secure random generator. It must be at least 32 characters in production — a shorter or missing value makes sign-in fail. Never reuse the Slack secrets.
 
-   ```powershell
-   pnpm auth:hash -- "choose-a-long-ceo-password"
-   ```
-
-4. Paste its output into `CEO_PASSWORD_HASH`.
-5. Generate `SESSION_SECRET` with a password manager or another cryptographically secure random generator. Never reuse the Slack secrets.
+> **Sign-in credentials (temporary).** Credential verification is currently pinned
+> to a fixed administrator account defined in `lib/auth/password.ts`, so
+> `CEO_EMAIL` and `CEO_PASSWORD_HASH` are no longer read and can be removed from
+> the environment. The account email is a server-side constant and the password is
+> stored only as a scrypt hash in that server-only module. To rotate the password,
+> run `pnpm auth:hash -- "<new password>"` and replace `ADMIN_PASSWORD_HASH`.
+> `SESSION_SECRET` is still required from the environment.
 
 ### 3. Create tables and seed the organization
 
