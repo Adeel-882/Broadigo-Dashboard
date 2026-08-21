@@ -43,6 +43,30 @@ const isaLeadMembership = (employeeColumn: string, occurredAtColumn: string) => 
     and (isa_membership.end_date is null or isa_membership.end_date>=${operationalDateSql(occurredAt(occurredAtColumn))})
 )`;
 
+/**
+ * Teams an employee has record-level activity attributed to in the period.
+ *
+ * Deliberately NOT unioned with membership. Formal membership is org structure;
+ * this is evidence that a specific record was attributed to a team, because
+ * ingestion stamps `team_id` from the reporting channel the message arrived in.
+ * A Closer who books into a real-estate channel shows up in that team's
+ * drill-down for as long as the record is in range, and never becomes a member
+ * of it. Keeping the two apart is what stops activity from silently rewriting
+ * someone's role or team.
+ *
+ * Docks are excluded on purpose: they are disciplinary records kept outside KPI
+ * scoring, and should never create a team association.
+ */
+const teamActivity = (current: (column: string) => ReturnType<typeof sql>) => sql`
+  select employee_id, team_id from appointments where ${current("occurred_at")} and employee_id is not null and team_id is not null
+  union
+  select employee_id, team_id from sales where ${current("occurred_at")} and employee_id is not null and team_id is not null
+  union
+  select employee_id, team_id from leads where ${current("occurred_at")} and employee_id is not null and team_id is not null
+  union
+  select employee_id, team_id from media_activity where ${current("occurred_at")} and employee_id is not null and team_id is not null
+`;
+
 function emptyData(period: PeriodKey, range: ReturnType<typeof resolveDateRange>): DashboardData {
   return { mode: "disconnected", timezone: "Asia/Karachi", period, range: serializedRange(range), generatedAt: new Date().toISOString(), metrics: [], divisions: [], teams: [], employees: [], activities: [], docks: [], targets: [], trend: [], health: { raw: 0, parsed: 0, unparsed: 0, errors: 0, unmatchedMessages: 0, unmappedEmployees: 0, unattributedDocks: 0, lastEventAt: null, newestMessageAt: null, lastSyncAt: null, channels: [] } };
 }
@@ -62,7 +86,7 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
   const {start,end,previousStart,previousEnd}=dashboardRange(range);
   const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
   const previous=(column:string)=>operationalShiftFilter(occurredAt(column),previousStart,previousEnd);
-  const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult] = await Promise.all([
+  const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult, appointmentsByTeamResult] = await Promise.all([
     db.execute(sql`select
       (select count(*) from appointments where ${current("occurred_at")})::int appointments,
       (select count(*) from appointments where ${previous("occurred_at")})::int appointments_prev,
@@ -77,13 +101,17 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
       (select count(*) from docks where ${previous("occurred_at")})::int docks_prev,
       (select count(*) from media_activity where ${current("occurred_at")})::int media,
       (select count(*) from media_activity where ${previous("occurred_at")})::int media_prev`),
-    db.execute(sql`select e.id, e.canonical_name, e.job_title, e.leadership_level, e.active,
-      coalesce(array_agg(distinct t.name) filter (where t.name is not null), '{}') teams,
-      coalesce(array_agg(distinct d.name) filter (where d.name is not null), '{}') divisions,
-      coalesce(array_agg(distinct a.alias) filter (where a.alias is not null), '{}') aliases,
-      coalesce(bool_or(m.ranking_enabled), false) ranking_enabled
-      from employees e left join employee_team_memberships m on m.employee_id=e.id left join teams t on t.id=m.team_id left join divisions d on d.id=t.division_id left join employee_aliases a on a.employee_id=e.id
-      group by e.id order by e.active desc, e.canonical_name`),
+    db.execute(sql`with activity as (${teamActivity(current)})
+      select e.id, e.canonical_name, e.job_title, e.leadership_level, e.active,
+      coalesce((select array_agg(distinct t.name) from employee_team_memberships m join teams t on t.id=m.team_id where m.employee_id=e.id), '{}') teams,
+      coalesce((select array_agg(distinct d.name) from employee_team_memberships m join teams t on t.id=m.team_id join divisions d on d.id=t.division_id where m.employee_id=e.id), '{}') divisions,
+      coalesce((select array_agg(distinct t.name) from activity ac join teams t on t.id=ac.team_id
+        where ac.employee_id=e.id
+          and not exists (select 1 from employee_team_memberships m where m.employee_id=e.id and m.team_id=ac.team_id)), '{}') activity_teams,
+      coalesce((select array_agg(distinct al.alias) from employee_aliases al where al.employee_id=e.id), '{}') aliases,
+      coalesce((select bool_or(m.ranking_enabled) from employee_team_memberships m where m.employee_id=e.id), false) ranking_enabled
+      from employees e
+      order by e.active desc, e.canonical_name`),
     db.execute(sql`select employee_id, metric, sum(current_value)::numeric current_value, sum(previous_value)::numeric previous_value from (
       select employee_id, 'appointments' metric, count(*) filter(where ${current("occurred_at")}) current_value, count(*) filter(where ${previous("occurred_at")}) previous_value from appointments group by employee_id
       union all select employee_id, 'revenue', coalesce(sum(amount) filter(where ${current("occurred_at")}),0), coalesce(sum(amount) filter(where ${previous("occurred_at")}),0) from sales group by employee_id
@@ -117,9 +145,20 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
       (select count(*) from docks where employee_id is null)::int unattributed_docks,
       (select max(completed_at) from sync_runs where status='COMPLETED') last_sync_at from slack_messages`),
     db.execute(sql`select c.id,c.name,c.slack_channel_id,c.workspace_id,c.active,max(sm.imported_at) last_event_at from slack_channels c left join slack_messages sm on sm.channel_id=c.id group by c.id order by c.name`),
+    db.execute(sql`select a.employee_id, t.name team, count(*)::int appointments
+      from appointments a join teams t on t.id=a.team_id
+      where ${current("a.occurred_at")} and a.employee_id is not null
+      group by a.employee_id, t.name`),
   ]);
   const summary = rows(summaryResult)[0] ?? {}; const outputs = rows(outputResult); const outputByEmployeeMetric = new Map(outputs.map((r) => [`${text(r.employee_id)}:${text(r.metric)}`, r])); const targetRows=rows(targetResult); const days=range.dayCount;
-  const people: Employee[] = rows(peopleResult).map((r) => { const metric=primaryMetricForTitle(text(r.job_title)); const output = outputByEmployeeMetric.get(`${text(r.id)}:${metric}`); const submittedOutput = metric === "leads" ? outputByEmployeeMetric.get(`${text(r.id)}:leads_submitted`) : undefined; const current = num(output?.current_value); const previous = num(output?.previous_value); const label = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Work updates"; const teams=r.teams as string[]; const matchingTargets=targetRows.filter(t=>text(t.metric).toLowerCase()===metric); const configured=matchingTargets.find(t=>text(t.employee)===text(r.canonical_name))??matchingTargets.find(t=>!t.employee&&teams.includes(text(t.team))); const effective=configured?num(configured.value)*targetScale(configured.period,days):null; const completion=effective&&effective>0?Math.round(current/effective*100):null; return { id: text(r.id), name: text(r.canonical_name), initials: initials(text(r.canonical_name)), title: text(r.job_title), teams, divisions: r.divisions as string[], aliases: r.aliases as string[], leadership: (r.leadership_level || undefined) as Employee["leadership"], rankingEnabled: Boolean(r.ranking_enabled), active: Boolean(r.active), status: statusFrom(completion), completion:completion??undefined, metricLabel: label, metricValue: metric === "revenue" ? money(current) : String(current), metricValueNumber: current, trend: delta(current, previous) ?? undefined, submittedLeads: submittedOutput ? num(submittedOutput.current_value) : undefined, excludedLeads: submittedOutput ? num(submittedOutput.current_value) - current : undefined }; });
+  const appointmentsByEmployeeTeam = new Map<string, Record<string, number>>();
+  for (const row of rows(appointmentsByTeamResult)) {
+    const key = text(row.employee_id);
+    const entry = appointmentsByEmployeeTeam.get(key) ?? {};
+    entry[text(row.team)] = num(row.appointments);
+    appointmentsByEmployeeTeam.set(key, entry);
+  }
+  const people: Employee[] = rows(peopleResult).map((r) => { const metric=primaryMetricForTitle(text(r.job_title)); const output = outputByEmployeeMetric.get(`${text(r.id)}:${metric}`); const submittedOutput = metric === "leads" ? outputByEmployeeMetric.get(`${text(r.id)}:leads_submitted`) : undefined; const appointmentsOutput = outputByEmployeeMetric.get(`${text(r.id)}:appointments`); const current = num(output?.current_value); const previous = num(output?.previous_value); const label = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Work updates"; const teams=r.teams as string[]; const matchingTargets=targetRows.filter(t=>text(t.metric).toLowerCase()===metric); const configured=matchingTargets.find(t=>text(t.employee)===text(r.canonical_name))??matchingTargets.find(t=>!t.employee&&teams.includes(text(t.team))); const effective=configured?num(configured.value)*targetScale(configured.period,days):null; const completion=effective&&effective>0?Math.round(current/effective*100):null; return { id: text(r.id), name: text(r.canonical_name), initials: initials(text(r.canonical_name)), title: text(r.job_title), teams, activityTeams: (r.activity_teams ?? []) as string[], divisions: r.divisions as string[], aliases: r.aliases as string[], leadership: (r.leadership_level || undefined) as Employee["leadership"], rankingEnabled: Boolean(r.ranking_enabled), active: Boolean(r.active), status: statusFrom(completion), completion:completion??undefined, metricLabel: label, metricValue: metric === "revenue" ? money(current) : String(current), metricValueNumber: current, trend: delta(current, previous) ?? undefined, submittedLeads: submittedOutput ? num(submittedOutput.current_value) : undefined, excludedLeads: submittedOutput ? num(submittedOutput.current_value) - current : undefined, appointmentsBooked: num(appointmentsOutput?.current_value), appointmentsByTeam: appointmentsByEmployeeTeam.get(text(r.id)) ?? {} }; });
   const teamRows = rows(teamResult); const teamMetrics = teamRows.map((r) => { const kind = text(r.type); const metricName=kind === "CLOSER" ? "revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work" : "appointments"; const value = num(r[metricName]); const label = kind === "CLOSER" ? "reported revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work updates" : "appointments"; const target=targetRows.find(t=>!t.employee&&text(t.team)===text(r.name)&&text(t.metric).toLowerCase()===metricName); const effective=target?num(target.value)*targetScale(target.period,days):null; const progress=effective&&effective>0?Math.round(value/effective*100):null; return { id: text(r.id), division: text(r.division), name: text(r.name), role: kind, metric: kind === "CLOSER" ? money(value) : String(value), label, status: statusFrom(progress), progress, members: r.members as string[], memberCount: num(r.member_count) }; });
   const divisionNames = [...new Set(teamRows.map((r) => text(r.division)))];
   const activity: Activity[] = rows(activityResult).map(activityFromRow);

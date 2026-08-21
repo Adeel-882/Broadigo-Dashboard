@@ -8,7 +8,11 @@ export interface Employee {
   name: string;
   initials: string;
   title: string;
+  /** Formal org membership. Activity never adds to this. */
   teams: string[];
+  /** Teams this person has record-level activity in for the period, but is not a
+   *  member of. Drives drill-down visibility only. */
+  activityTeams?: string[];
   divisions: string[];
   aliases?: string[];
   leadership?: "CEO" | "COO" | "CTO";
@@ -23,6 +27,11 @@ export interface Employee {
   /** Lead Management only: total Slack submissions behind the counted KPI value. */
   submittedLeads?: number;
   excludedLeads?: number;
+  /** Appointments this person personally booked in the period, whatever their role. */
+  appointmentsBooked?: number;
+  /** The same count split by the team each appointment was attributed to, so a
+   *  person active in two teams is never shown their combined total under one. */
+  appointmentsByTeam?: Record<string, number>;
 }
 
 export interface MetricCard { label: string; value: string; delta: number | null; note: string; kind: MetricKind; submitted?: number; excluded?: number; }

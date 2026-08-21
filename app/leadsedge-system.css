@@ -669,3 +669,18 @@ textarea:focus-visible,
   .ingest-log > div { grid-template-columns: 1fr; gap: var(--sp-1); }
   .ingest-log em { white-space: normal; }
 }
+
+/* A closer who books appointments shows that alongside their revenue metric,
+   without changing what their role is. */
+.employee-secondary-stat {
+  display: block; margin-top: 3px;
+  font-size: var(--fs-xs); color: var(--le-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Activity-derived team association is visibly distinct from formal membership:
+   it means "their records landed here this period", not "they belong here". */
+.team-chip-activity {
+  border-style: dashed !important;
+  color: var(--le-text-faint) !important;
+}
