@@ -1,0 +1,647 @@
+/* ==========================================================================
+   LeadsEdge Executive Command Center — design system layer
+   --------------------------------------------------------------------------
+   Loaded after globals.css so it is the single source of truth for brand
+   tokens, type roles, spacing rhythm, status semantics and component polish.
+
+   Brand values verified against https://leadsedge.us (computed styles):
+     red #FF4134 · ink-on-red #5D0600 · tint #FFE9E8 · black #000
+     display face tracking -0.045em → -0.06em · body line-height 1.6
+     radii 12px card / 8px button / 6px input / pill toggle
+     borders rgba(255,255,255,.08) and .15 · muted #888 / #666
+   ========================================================================== */
+
+:root {
+  /* ---- Brand ---------------------------------------------------------- */
+  --le-red: #ff4134;
+  --le-red-hover: #ff5c51;
+  --le-red-press: #e5382c;
+  --le-red-ink: #5d0600;
+  --le-red-tint: #ffe9e8;
+  --le-red-soft: rgba(255, 65, 52, .09);
+  --le-red-medium: rgba(255, 65, 52, .16);
+  --le-red-border: rgba(255, 65, 52, .30);
+  --le-red-glow: rgba(255, 65, 52, .13);
+
+  /* ---- Neutral foundation (pure, matching the brand's true black) ------ */
+  --le-bg-0: #000;
+  --le-bg: #070707;
+  --le-bg-elevated: #0b0b0c;
+  --le-surface: #0f0f11;
+  --le-surface-strong: #141416;
+  --le-surface-hover: #1a1a1d;
+
+  /* ---- Text ramp ------------------------------------------------------- */
+  --le-text-primary: #fff;
+  --le-text-secondary: #b4b4b6;
+  --le-text-muted: #8a8a8c;
+  /* Carries every 11px uppercase label, so it must clear AA for small text:
+     5.28:1 on the card surface. Anything darker fails (#6a6a6c was 3.55:1). */
+  --le-text-faint: #86868a;
+
+  /* ---- Lines ----------------------------------------------------------- */
+  --le-border: rgba(255, 255, 255, .08);
+  --le-border-strong: rgba(255, 255, 255, .15);
+  --le-border-hover: rgba(255, 255, 255, .22);
+
+  /* ---- Status. Deliberately NOT brand red, so a branded surface never
+          reads as an alert and a falling metric never reads as branding. --- */
+  --le-positive: #3fbf87;
+  --le-positive-soft: rgba(63, 191, 135, .12);
+  --le-warning: #e0a542;
+  --le-warning-soft: rgba(224, 165, 66, .12);
+  --le-negative: #e07a6f;
+  --le-negative-soft: rgba(224, 122, 111, .13);
+  --le-neutral-chip: rgba(255, 255, 255, .06);
+
+  /* ---- Type scale ------------------------------------------------------ */
+  --fs-label: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+  --fs-4xl: 38px;
+
+  /* ---- Spacing rhythm (dense dashboard tier) --------------------------- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;
+  --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* ---- Radii ----------------------------------------------------------- */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
+
+  /* ---- Motion. One rhythm everywhere; exits ~65% of entrances. --------- */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-enter: 300ms;
+  --dur-exit: 190ms;
+  --ease-out: cubic-bezier(.22, .8, .32, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+
+  /* legacy aliases still referenced by globals.css */
+  --le-red-dark: var(--le-red-press);
+  --line: var(--le-border);
+  --muted: var(--le-text-muted);
+}
+
+/* ---- Typographic roles ------------------------------------------------- */
+body { font-size: var(--fs-base); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+h1, h2, h3, .kpi-card > strong, .hero-content h1 { font-family: var(--font-le-display), Arial, sans-serif; }
+
+/* Metadata labels: uppercase, tracked, muted — never used for body copy. */
+.eyebrow, .nav-label, .activity-header span, .team-table > div, .kpi-head > span,
+.division-top > span, .hero-health span, .employee-stat span, .profile-kpis span,
+.record-details dt, .empty-state p {
+  font-size: var(--fs-label);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--le-text-faint);
+}
+
+/* Every figure the CEO compares column-to-column uses tabular figures so
+   digits never re-flow between periods. */
+.kpi-card > strong, .division-output-list strong, .leader-metric strong,
+.employee-stat strong, .profile-kpis strong, .team-card > strong,
+.hero-health strong, .metric-value, .team-table strong, td, .activity-table span {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ==========================================================================
+   Status semantics — colour is never the only signal
+   ========================================================================== */
+.positive, .negative {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+}
+.positive { color: var(--le-positive) !important; background: var(--le-positive-soft); border-color: rgba(63, 191, 135, .22); }
+.negative { color: var(--le-negative) !important; background: var(--le-negative-soft); border-color: rgba(224, 122, 111, .24); }
+.positive svg, .negative svg { flex: 0 0 auto; }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-label); font-weight: 600; letter-spacing: .04em;
+  padding: 3px 8px; border-radius: var(--r-pill);
+  border: 1px solid var(--le-border-strong); background: var(--le-neutral-chip);
+  color: var(--le-text-secondary);
+}
+.status-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-ahead, .status-on-track { color: var(--le-positive); border-color: rgba(63, 191, 135, .28); background: var(--le-positive-soft); }
+.status-at-risk { color: var(--le-warning); border-color: rgba(224, 165, 66, .28); background: var(--le-warning-soft); }
+.status-behind { color: var(--le-negative); border-color: rgba(224, 122, 111, .28); background: var(--le-negative-soft); }
+.status-no-target { color: var(--le-text-muted); }
+
+/* ==========================================================================
+   Shell — sidebar and topbar
+   ========================================================================== */
+.sidebar {
+  padding: var(--sp-6) var(--sp-4) var(--sp-5);
+  background: linear-gradient(180deg, #0d0d0f, #070708);
+  border-right: 1px solid var(--le-border);
+}
+.sidebar-brand { gap: var(--sp-3); padding: 0 var(--sp-2) var(--sp-6); align-items: center; }
+.brand-mark {
+  width: 36px; height: 36px; border-radius: var(--r-md);
+  background: var(--le-red); color: #fff;
+  font-family: var(--font-le-display), Arial, sans-serif; font-weight: 800; font-size: var(--fs-sm);
+  box-shadow: 0 6px 18px var(--le-red-glow); border: 0;
+}
+.sidebar-brand strong { font-size: var(--fs-md); letter-spacing: -.02em; line-height: 1.2; }
+.sidebar-brand span {
+  font-size: var(--fs-label); color: var(--le-text-faint); margin-top: 3px;
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+}
+.nav-label { margin: 0 var(--sp-3) var(--sp-2); }
+.sidebar nav { gap: 2px; margin-bottom: var(--sp-6); }
+.sidebar nav button {
+  height: 42px; border-radius: var(--r-md); padding: 0 var(--sp-3); gap: var(--sp-3);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--le-text-muted);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+.sidebar nav button:hover { background: rgba(255, 255, 255, .04); color: var(--le-text-primary); }
+.sidebar nav button.active {
+  color: #fff; background: var(--le-red-soft);
+  box-shadow: inset 2px 0 0 var(--le-red);
+}
+.sidebar nav button.active svg { color: var(--le-red); }
+.sidebar nav em {
+  font-size: var(--fs-label); font-weight: 600; padding: 2px 7px; border-radius: var(--r-sm);
+  background: var(--le-neutral-chip); color: var(--le-text-secondary);
+}
+.sidebar-bottom { padding-top: var(--sp-4); }
+
+.topbar {
+  padding: 0 var(--sp-8);
+  background: rgba(7, 7, 8, .72);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border-bottom: 1px solid var(--le-border);
+}
+.global-search {
+  border-radius: var(--r-md); background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--le-border);
+  transition: border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
+}
+.global-search:hover { border-color: var(--le-border-strong); }
+.global-search:focus-within { border-color: var(--le-red-border); background: rgba(255, 255, 255, .05); }
+.global-search input { font-size: var(--fs-sm); color: var(--le-text-primary); }
+.global-search kbd {
+  font-size: var(--fs-label); font-family: inherit; letter-spacing: .04em;
+  border-radius: var(--r-xs); border: 1px solid var(--le-border-strong); color: var(--le-text-faint);
+}
+
+/* ==========================================================================
+   Hero — tighter, brand-lit, no dead centre
+   ========================================================================== */
+.executive-hero {
+  min-height: 0;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--le-border);
+  background:
+    radial-gradient(120% 90% at 78% 18%, var(--le-red-glow), transparent 46%),
+    linear-gradient(140deg, #121213, #08080a 68%);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .38), inset 0 1px rgba(255, 255, 255, .04);
+}
+.hero-content { min-height: 0; padding: var(--sp-8) var(--sp-10) var(--sp-6); gap: var(--sp-8); align-items: flex-start; }
+.hero-content > div:first-child { max-width: 660px; }
+.hero-content h1 {
+  font-size: clamp(30px, 3vw, 46px); line-height: 1.02; letter-spacing: -.045em;
+  font-weight: 700; margin: 0 0 var(--sp-3);
+}
+.hero-content p:not(.eyebrow) { font-size: var(--fs-base); line-height: 1.65; color: var(--le-text-muted); max-width: 620px; }
+.eyebrow { display: inline-flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.eyebrow svg { color: var(--le-red); }
+.hero-health strong { font-size: var(--fs-2xl); font-weight: 700; margin: var(--sp-1) 0; letter-spacing: -.03em; }
+.hero-health small { font-size: var(--fs-xs); color: var(--le-text-muted); display: inline-flex; align-items: center; gap: 6px; }
+.hero-health i { background: var(--le-positive); box-shadow: 0 0 0 3px var(--le-positive-soft); }
+.hero-footer {
+  padding: 0 var(--sp-10); gap: var(--sp-8); font-size: var(--fs-xs);
+  color: var(--le-text-muted); border-top: 1px solid var(--le-border);
+}
+.hero-footer svg { color: var(--le-text-faint); }
+.hero-glow { display: none; }
+.network-canvas { inset: 0 0 0 42%; opacity: .55; pointer-events: none; }
+
+/* ==========================================================================
+   KPI cards — label + delta, then the number, then context
+   ========================================================================== */
+.kpi-grid { gap: var(--sp-3); }
+.kpi-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "head head" "value icon" "note note";
+  align-items: end;
+  row-gap: var(--sp-2);
+  min-height: 0;
+  padding: var(--sp-5);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--le-surface-strong), var(--le-surface));
+  border: 1px solid var(--le-border);
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+.kpi-card::after { display: none; }
+.kpi-card:hover { border-color: var(--le-border-strong); box-shadow: 0 18px 44px rgba(0, 0, 0, .32); }
+.kpi-head { grid-area: head; display: flex; align-items: center; gap: var(--sp-3); }
+.kpi-head > span { flex: 1 1 auto; }
+.kpi-card > strong {
+  grid-area: value; margin: 0;
+  font-size: clamp(28px, 2.1vw, 34px); font-weight: 700; letter-spacing: -.035em; line-height: 1;
+  color: var(--le-text-primary);
+}
+.kpi-icon {
+  grid-area: icon; width: 34px; height: 34px; border-radius: var(--r-md);
+  display: grid; place-items: center;
+  background: var(--le-neutral-chip); border: 1px solid var(--le-border);
+  color: var(--le-text-muted);
+}
+.kpi-icon.brand, .kpi-icon.lead { color: var(--le-red); background: var(--le-red-soft); border-color: var(--le-red-border); }
+.kpi-icon.gold, .kpi-icon.warm { color: var(--le-warning); background: var(--le-warning-soft); border-color: rgba(224, 165, 66, .26); }
+.kpi-icon.danger { color: var(--le-negative); background: var(--le-negative-soft); border-color: rgba(224, 122, 111, .26); }
+.kpi-card > small { grid-area: note; font-size: var(--fs-xs); color: var(--le-text-muted); line-height: 1.5; }
+
+/* Revenue reads as the commercial headline without turning gimmicky. */
+.kpi-card:nth-child(3) { background: linear-gradient(180deg, #17161a, #0e0e10); }
+.kpi-card:nth-child(3) > strong { font-size: clamp(30px, 2.3vw, 37px); }
+
+/* ==========================================================================
+   Sections, divisions, leaderboard, activity
+   ========================================================================== */
+.section-heading, .card-title { margin-bottom: var(--sp-4); }
+.section-heading h2, .card-title h2 { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -.03em; margin: 0; }
+.text-button {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm); color: var(--le-text-muted); background: none; border: 0;
+  padding: var(--sp-2); border-radius: var(--r-sm); cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.text-button:hover { color: var(--le-red); }
+
+.division-grid { gap: var(--sp-3); }
+.division-card {
+  padding: var(--sp-5); border-radius: var(--r-lg); border: 1px solid var(--le-border);
+  background: linear-gradient(180deg, var(--le-surface-strong), var(--le-surface));
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+.division-card:hover { border-color: var(--le-red-border); box-shadow: 0 18px 44px rgba(0, 0, 0, .32); }
+.division-card h3 { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.025em; margin: var(--sp-3) 0 var(--sp-4); }
+.division-top svg { color: var(--le-text-faint); transition: color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
+.division-card:hover .division-top svg { color: var(--le-red); transform: translateX(2px); }
+.division-output-list { display: flex; gap: var(--sp-8); }
+.division-output-list strong { display: block; font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -.03em; }
+.division-output-list small { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .08em; color: var(--le-text-faint); }
+
+.leader-list button, .activity-table > button {
+  transition: background var(--dur-base) var(--ease-out);
+  border-radius: var(--r-sm);
+}
+.leader-list button:hover, .activity-table > button:hover { background: rgba(255, 255, 255, .03); }
+.leader-list .rank { font-size: var(--fs-xs); color: var(--le-text-faint); font-variant-numeric: tabular-nums; }
+.leader-list strong { font-size: var(--fs-base); }
+.leader-list small { font-size: var(--fs-xs); color: var(--le-text-muted); }
+.leader-metric strong { font-size: var(--fs-lg); font-weight: 700; }
+
+.activity-table > button { min-height: 56px; }
+.activity-type {
+  font-size: var(--fs-label); font-weight: 600; letter-spacing: .04em;
+  padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--le-border-strong);
+  background: var(--le-neutral-chip); color: var(--le-text-secondary);
+}
+.channel { font-size: var(--fs-xs); color: var(--le-text-faint); }
+
+/* ==========================================================================
+   Buttons — primary red is a brand CTA, not a destructive signal
+   ========================================================================== */
+.primary-button, .secondary-button {
+  height: 40px; padding: 0 var(--sp-4); border-radius: var(--r-md);
+  font-size: var(--fs-sm); font-weight: 600; gap: var(--sp-2); cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+.primary-button { background: var(--le-red); color: #fff; border: 0; box-shadow: 0 8px 22px var(--le-red-glow); }
+.primary-button:hover:not(:disabled) { background: var(--le-red-hover); }
+.primary-button:active:not(:disabled) { background: var(--le-red-press); }
+.secondary-button { background: rgba(255, 255, 255, .03); border: 1px solid var(--le-border); color: var(--le-text-secondary); }
+.secondary-button:hover { border-color: var(--le-border-hover); color: #fff; background: rgba(255, 255, 255, .05); }
+
+/* ==========================================================================
+   Filters, date selector, inputs
+   ========================================================================== */
+.period-select, .directory-tools > div, .directory-tools > button, .icon-button {
+  border-radius: var(--r-md); border: 1px solid var(--le-border);
+  background: rgba(255, 255, 255, .03); color: var(--le-text-secondary);
+  transition: border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
+}
+.period-select:hover, .directory-tools > div:hover, .directory-tools > button:hover, .icon-button:hover {
+  border-color: var(--le-border-hover); background: rgba(255, 255, 255, .05); color: #fff;
+}
+.period-select { padding: 0 var(--sp-3); gap: var(--sp-2); }
+.period-select svg:first-child { color: var(--le-red); }
+.period-select select { font-size: var(--fs-sm); color: var(--le-text-primary); cursor: pointer; }
+.period-select select option { background: var(--le-surface-strong); color: var(--le-text-primary); }
+.directory-tools > button { height: 40px; font-size: var(--fs-sm); font-weight: 500; }
+.directory-tools > button[aria-pressed="true"],
+.directory-tools > button.active {
+  background: var(--le-red-soft); border-color: var(--le-red-border); color: #fff;
+}
+.icon-button i { background: var(--le-red); border-color: var(--le-surface); }
+input, select, textarea { font-size: var(--fs-sm); }
+
+/* ==========================================================================
+   Tables — light rules, strong alignment, readable density
+   ========================================================================== */
+.activity-header, .team-table > div {
+  border-bottom: 1px solid var(--le-border);
+  color: var(--le-text-faint);
+}
+.team-table > button { border-bottom: 1px solid rgba(255, 255, 255, .045); font-size: var(--fs-sm); }
+.team-table > button:hover { background: rgba(255, 255, 255, .03); }
+.team-table i { background: rgba(255, 255, 255, .08); height: 4px; border-radius: var(--r-pill); }
+.team-table i em { background: var(--le-red); border-radius: var(--r-pill); }
+
+/* ==========================================================================
+   Cards, drawer, glass — polished dark glass, used sparingly
+   ========================================================================== */
+.glass-card {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--le-border);
+  background: linear-gradient(180deg, var(--le-surface-strong), var(--le-surface));
+}
+.detail-drawer {
+  background: linear-gradient(180deg, #141416, #0a0a0b);
+  border-left: 1px solid var(--le-border-strong);
+  box-shadow: -30px 0 90px rgba(0, 0, 0, .55);
+}
+.drawer-scrim { background: rgba(0, 0, 0, .62); backdrop-filter: blur(4px); }
+.lead-status-badge { font-size: var(--fs-label); }
+.record-details dd { font-size: var(--fs-sm); }
+
+.empty-state { border: 1px dashed var(--le-border-strong); border-radius: var(--r-lg); padding: var(--sp-8) var(--sp-5); }
+.empty-state strong { font-size: var(--fs-base); color: var(--le-text-secondary); }
+.empty-state p { font-size: var(--fs-xs); text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--le-text-faint); }
+.empty-state svg { color: var(--le-text-faint); }
+
+/* ==========================================================================
+   Focus — visible, brand-tinted, never removed
+   ========================================================================== */
+:focus-visible { outline: 2px solid var(--le-red); outline-offset: 2px; border-radius: var(--r-xs); }
+.sidebar nav button:focus-visible, .kpi-card:focus-visible { outline-offset: -2px; }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media (max-width: 1500px) {
+  .hero-content { padding: var(--sp-6) var(--sp-8) var(--sp-5); }
+  .hero-footer { padding: 0 var(--sp-8); gap: var(--sp-6); }
+}
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .division-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .division-grid { grid-template-columns: 1fr; }
+  .network-canvas { display: none; }
+  .hero-content { flex-direction: column; gap: var(--sp-5); }
+  .hero-health { margin-left: 0; text-align: left; }
+}
+@media (max-width: 640px) {
+  .topbar { padding: 0 var(--sp-4); }
+  .hero-content { padding: var(--sp-5) var(--sp-4); }
+  .hero-content h1 { font-size: 28px; letter-spacing: -.035em; }
+  .hero-content p:not(.eyebrow) { font-size: var(--fs-sm); }
+  .hero-footer { padding: var(--sp-3) var(--sp-4); gap: var(--sp-3); flex-wrap: wrap; height: auto; }
+  .kpi-grid { grid-template-columns: 1fr; gap: var(--sp-2); }
+  .kpi-card { padding: var(--sp-4); }
+  .kpi-card > strong { font-size: 28px; }
+  .division-output-list { gap: var(--sp-6); }
+  .detail-drawer { width: 100vw; }
+}
+
+/* ==========================================================================
+   Motion — one rhythm, and none at all when the user opts out
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .network-canvas { display: none; }
+}
+
+/* ==========================================================================
+   Entrance motion
+   Keyframe ends at the element's natural state, so an interrupted or skipped
+   animation still leaves content fully readable.
+   ========================================================================== */
+@keyframes le-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.le-reveal { animation: le-rise var(--dur-enter) var(--ease-out) both; }
+.le-reveal > * { animation: le-rise var(--dur-enter) var(--ease-out) both; }
+
+/* Staggered card entrance (skill preset: 30-50ms per item, transform+opacity only). */
+.kpi-grid.le-reveal > *:nth-child(1) { animation-delay: 0ms; }
+.kpi-grid.le-reveal > *:nth-child(2) { animation-delay: 40ms; }
+.kpi-grid.le-reveal > *:nth-child(3) { animation-delay: 80ms; }
+.kpi-grid.le-reveal > *:nth-child(4) { animation-delay: 120ms; }
+.kpi-grid.le-reveal > *:nth-child(5) { animation-delay: 160ms; }
+.kpi-grid.le-reveal > *:nth-child(6) { animation-delay: 200ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .le-reveal, .le-reveal > * { animation: none !important; }
+}
+
+/* ==========================================================================
+   Refinements from visual QA
+   ========================================================================== */
+
+/* KPI icon reads as a quiet category mark beside the label, not a floating
+   object next to the number. */
+.kpi-card {
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "icon head" "value value" "note note";
+  align-items: center;
+  row-gap: var(--sp-3);
+}
+.kpi-icon { width: 30px; height: 30px; align-self: start; }
+.kpi-icon svg { width: 15px; height: 15px; }
+.kpi-card > strong { align-self: end; }
+
+/* Cards size to their content instead of stretching into dead space. */
+.overview-columns { align-items: start; }
+.attention-card, .leaderboard-card { align-self: start; }
+
+/* Chart surface: quiet grid, brand line, readable axes. */
+.trend-card .recharts-cartesian-axis-tick text { font-size: var(--fs-xs); }
+.trend-card .recharts-cartesian-grid line { stroke: rgba(255, 255, 255, .055); }
+.chart-empty {
+  display: grid; place-items: center; min-height: 180px;
+  color: var(--le-text-muted); font-size: var(--fs-sm);
+  border: 1px dashed var(--le-border-strong); border-radius: var(--r-lg);
+}
+
+/* Sidebar footer must never be clipped by the viewport edge. */
+.sidebar-bottom { padding-bottom: var(--sp-2); }
+.sidebar { overflow-y: auto; scrollbar-width: thin; }
+
+/* Directory + management pages */
+.employee-card, .team-card, .glass-card {
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.employee-card:hover, .team-card:hover { border-color: var(--le-border-hover); box-shadow: 0 16px 40px rgba(0, 0, 0, .3); }
+.employee-card h3, .team-card h3 { font-size: var(--fs-md); font-weight: 700; letter-spacing: -.02em; }
+.employee-stat strong, .team-card > strong { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -.03em; }
+.team-chips span, .profile-chips span {
+  font-size: var(--fs-label); border-radius: var(--r-sm); padding: 3px 7px;
+  border: 1px solid var(--le-border); color: var(--le-text-muted); background: var(--le-neutral-chip);
+}
+.leadership-badge {
+  border-radius: var(--r-sm); padding: 3px 8px; font-size: var(--fs-label); font-weight: 600;
+  border: 1px solid var(--le-red-border); background: var(--le-red-soft); color: var(--le-red-hover);
+}
+.person-avatar, .avatar-button > span, .activity-person i {
+  background: linear-gradient(150deg, #2a2a2e, #171719);
+  border: 1px solid var(--le-border-strong); color: var(--le-text-secondary); font-weight: 700;
+}
+
+/* Drawer profile KPIs */
+.profile-kpis article { border-radius: var(--r-md); border: 1px solid var(--le-border); background: rgba(255, 255, 255, .02); padding: var(--sp-4); }
+.profile-kpis strong { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -.03em; }
+.profile-kpis small { font-size: var(--fs-xs); color: var(--le-text-muted); }
+.goal-progress > i { background: rgba(255, 255, 255, .08); border-radius: var(--r-pill); height: 5px; }
+.goal-progress > i em { background: var(--le-red); border-radius: var(--r-pill); }
+
+/* Command palette */
+.search-results { border-radius: var(--r-lg); border: 1px solid var(--le-border-strong); background: var(--le-surface-strong); }
+.search-results > button { min-height: 56px; transition: background var(--dur-base) var(--ease-out); }
+.search-results > button:hover, .search-results > button:focus-visible { background: var(--le-red-soft); }
+.search-results > button > span:first-child { color: var(--le-red); font-size: var(--fs-label); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.search-overlay { background: rgba(0, 0, 0, .66); backdrop-filter: blur(6px); }
+
+/* ==========================================================================
+   Operational status semantics (Slack data / health consoles)
+   Real status colours — never overridden by the brand accent.
+   ========================================================================== */
+.summary-card > span {
+  width: 34px; height: 34px; border-radius: var(--r-md); display: grid; place-items: center;
+  background: var(--le-neutral-chip); border: 1px solid var(--le-border); color: var(--le-text-muted);
+}
+.summary-card.tone-positive > span { color: var(--le-positive); background: var(--le-positive-soft); border-color: rgba(63, 191, 135, .26); }
+.summary-card.tone-warning  > span { color: var(--le-warning);  background: var(--le-warning-soft);  border-color: rgba(224, 165, 66, .26); }
+.summary-card.tone-negative > span { color: var(--le-negative); background: var(--le-negative-soft); border-color: rgba(224, 122, 111, .26); }
+.summary-card p { font-size: var(--fs-sm); color: var(--le-text-muted); margin: var(--sp-3) 0 var(--sp-1); }
+.summary-card strong { font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -.03em; }
+.summary-card small { font-size: var(--fs-xs); color: var(--le-text-faint); }
+
+/* ==========================================================================
+   Employee directory — tighter intelligence grid
+   ========================================================================== */
+.employee-card { padding: var(--sp-4); border-radius: var(--r-lg); }
+.employee-card h3 { margin: var(--sp-3) 0 2px; }
+.employee-card > p { font-size: var(--fs-xs); color: var(--le-text-muted); min-height: 0; }
+.team-chips { margin: var(--sp-3) 0 var(--sp-3); min-height: 0; gap: var(--sp-1); }
+.employee-stat { padding-top: var(--sp-3); border-top: 1px solid var(--le-border); }
+.employee-stat strong { margin-top: 2px; }
+.employee-card-foot { margin-top: var(--sp-3); font-size: var(--fs-xs); color: var(--le-text-faint); }
+.employee-grid { gap: var(--sp-3); align-items: start; }
+/* Status is already stated in words at the card foot; the dot is a redundant
+   cue, so it must not be the only carrier of meaning. */
+.status-dot { width: 8px; height: 8px; }
+.status-dot.ahead, .status-dot.on-track { background: var(--le-positive); }
+.status-dot.at-risk { background: var(--le-warning); }
+.status-dot.behind { background: var(--le-negative); }
+
+/* ==========================================================================
+   Docks — serious, understated, never celebratory
+   ========================================================================== */
+.dock-row, .dock-card { border-radius: var(--r-lg); }
+.dock-amount, .dock-card strong { color: var(--le-text-primary); font-variant-numeric: tabular-nums; }
+
+/* The icon and label sit in separate grid columns and need an explicit gutter;
+   without it the label runs under the icon at narrow widths. */
+.kpi-card { column-gap: var(--sp-3); }
+.kpi-head > span { min-width: 0; overflow-wrap: anywhere; }
+/* Long operational date ranges must wrap cleanly rather than split mid-token. */
+.eyebrow { flex-wrap: wrap; row-gap: 2px; }
+
+/* ==========================================================================
+   Large-desktop density — 1920+ screens should carry more signal, not more
+   empty gutter.
+   ========================================================================== */
+.content-wrap { max-width: 1560px; padding: var(--sp-8) var(--sp-8) var(--sp-6); }
+@media (min-width: 1800px) {
+  .content-wrap { max-width: 1720px; }
+  .kpi-grid { grid-template-columns: repeat(6, 1fr); }
+  .kpi-card > strong { font-size: clamp(26px, 1.6vw, 32px); }
+}
+@media (min-width: 2200px) { .content-wrap { max-width: 1880px; } }
+
+/* ==========================================================================
+   Drawer corrections
+   ========================================================================== */
+/* In the profile KPI tile the trend is the tile's headline number, not an
+   inline chip, so it takes the colour but none of the pill treatment. */
+.profile-kpis strong.positive, .profile-kpis strong.negative {
+  display: block; padding: 0; background: none; border: 0;
+  font-size: var(--fs-xl); font-weight: 700; letter-spacing: -.03em;
+}
+/* Slack evidence often contains long URLs; let them reflow instead of
+   overflowing the drawer. */
+.profile-activity p, .raw-message pre, .drawer-lede, .record-details dd {
+  overflow-wrap: anywhere;
+}
+.profile-activity p { font-size: var(--fs-sm); color: var(--le-text-secondary); }
+.profile-activity small { font-size: var(--fs-xs); color: var(--le-text-faint); }
+.profile-activity strong { font-size: var(--fs-sm); }
+.drawer-content > h2 { font-size: var(--fs-2xl); letter-spacing: -.03em; }
+
+/* ==========================================================================
+   Focus indicators — 2px solid brand red at full opacity everywhere.
+   An earlier rule set a 1px 42%-opacity ring, which is too weak to satisfy
+   the 3:1 focus-appearance requirement.
+   ========================================================================== */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible,
+.sidebar nav button:focus-visible,
+.kpi-card:focus-visible,
+.employee-card:focus-visible,
+.division-card:focus-visible,
+.team-card:focus-visible,
+.leader-list button:focus-visible,
+.activity-table > button:focus-visible,
+.search-results > button:focus-visible,
+.text-button:focus-visible,
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+  outline: 2px solid var(--le-red) !important;
+  outline-offset: 2px !important;
+}
+.sidebar nav button:focus-visible,
+.activity-table > button:focus-visible,
+.search-results > button:focus-visible,
+.leader-list button:focus-visible { outline-offset: -2px !important; }
+
+/* The search field's hit area is the whole 40px control, not just the text box. */
+.global-search { cursor: text; }
+.global-search input { height: 100%; align-self: stretch; }
+
+/* Footer meta inherited a sub-11px size from a relative unit. */
+.app-footer small, footer small { font-size: var(--fs-xs); }

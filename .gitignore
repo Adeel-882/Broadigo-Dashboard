@@ -1,0 +1,13 @@
+.next/
+node_modules/
+.env
+.env.local
+coverage/
+outputs/
+.tmp/
+*.tsbuildinfo
+
+.pnpm-store/
+.codex-sheet-audit/
+artifacts/
+Skills/
