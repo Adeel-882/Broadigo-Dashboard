@@ -82,6 +82,31 @@ export const slackEvents = pgTable("slack_events", {
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Append-only diagnostic ledger for live Slack webhook deliveries.
+ *
+ * Separate from `slack_events` (which stays a pure idempotency claim inserted
+ * only after a channel matches) so that rejected, ignored and failed deliveries
+ * are recorded too — those are exactly the cases that were previously invisible.
+ */
+export const slackIngestLog = pgTable("slack_ingest_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  eventId: text("event_id"),
+  workspaceId: text("workspace_id"),
+  slackChannelId: text("slack_channel_id"),
+  slackUserId: text("slack_user_id"),
+  slackTs: text("slack_ts"),
+  routingAction: text("routing_action").notNull(),
+  result: text("result").notNull(),
+  reason: text("reason"),
+  recordType: text("record_type"),
+  workspaceMatched: boolean("workspace_matched"),
+  channelMatched: boolean("channel_matched"),
+  durationMs: integer("duration_ms"),
+  errorMessage: text("error_message"),
+}, (table) => [index("slack_ingest_log_received_idx").on(table.receivedAt)]);
+
 export const slackMessages = pgTable("slack_messages", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: text("workspace_id").notNull(),

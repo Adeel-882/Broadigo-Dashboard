@@ -36,7 +36,12 @@ export async function ingestSlackEvent(payload:SlackEventCallback){
   if(!event)return {status:"ignored" as const};
   return db.transaction(async tx=>{
     const [channel]=await tx.select().from(slackChannels).where(and(eq(slackChannels.workspaceId,payload.team_id),eq(slackChannels.slackChannelId,event.channel),eq(slackChannels.active,true))).limit(1);
-    if(!channel)return {status:"unconfigured-channel" as const};
+    if(!channel){
+      // Separate "wrong workspace" from "channel not mapped/inactive" so the
+      // diagnostics say which half of the mapping failed.
+      const [anyInWorkspace]=await tx.select({id:slackChannels.id}).from(slackChannels).where(eq(slackChannels.workspaceId,payload.team_id)).limit(1);
+      return {status:"unconfigured-channel" as const,workspaceMatched:Boolean(anyInWorkspace),channelMatched:false};
+    }
     const claimed=await tx.insert(slackEvents).values({eventId:payload.event_id,workspaceId:payload.team_id}).onConflictDoNothing().returning({id:slackEvents.id});
     const [existing]=await tx.select().from(slackMessages).where(and(eq(slackMessages.workspaceId,payload.team_id),eq(slackMessages.channelId,channel.id),eq(slackMessages.slackTs,event.ts))).limit(1);
     if(existing){

@@ -645,3 +645,27 @@ textarea:focus-visible,
 
 /* Footer meta inherited a sub-11px size from a relative unit. */
 .app-footer small, footer small { font-size: var(--fs-xs); }
+
+/* ==========================================================================
+   Live Slack ingestion diagnostics panel
+   ========================================================================== */
+.live-ingest-card { grid-column: 1 / -1; }
+.ingest-log { margin-top: var(--sp-4); border-top: 1px solid var(--le-border); }
+.ingest-log > div {
+  display: grid; grid-template-columns: 96px 150px 1fr auto; gap: var(--sp-3);
+  align-items: center; padding: var(--sp-3) 0; border-bottom: 1px solid rgba(255, 255, 255, .045);
+}
+.ingest-result {
+  font-size: var(--fs-label); font-weight: 600; letter-spacing: .04em; text-align: center;
+  padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--le-border-strong);
+  background: var(--le-neutral-chip); color: var(--le-text-secondary);
+}
+.ingest-positive { color: var(--le-positive); background: var(--le-positive-soft); border-color: rgba(63, 191, 135, .28); }
+.ingest-negative { color: var(--le-negative); background: var(--le-negative-soft); border-color: rgba(224, 122, 111, .28); }
+.ingest-log strong { font-size: var(--fs-sm); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.ingest-log small { font-size: var(--fs-xs); color: var(--le-text-muted); overflow-wrap: anywhere; }
+.ingest-log em { font-size: var(--fs-xs); color: var(--le-text-faint); font-style: normal; white-space: nowrap; }
+@media (max-width: 900px) {
+  .ingest-log > div { grid-template-columns: 1fr; gap: var(--sp-1); }
+  .ingest-log em { white-space: normal; }
+}

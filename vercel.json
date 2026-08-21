@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["hnd1"],
+  "functions": {
+    "app/api/slack/events/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}

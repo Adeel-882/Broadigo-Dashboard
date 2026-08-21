@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "leads:reconcile": "tsx scripts/reconcile-isa-leads.ts",
     "leads:audit-reactions": "tsx scripts/audit-lead-reactions.ts",
-    "leads:backfill-reactions": "tsx scripts/backfill-lead-reactions.ts"
+    "leads:backfill-reactions": "tsx scripts/backfill-lead-reactions.ts",
+    "slack:probe": "tsx scripts/probe-slack-ingestion.ts"
   },
   "dependencies": {
     "@next/env": "latest",
