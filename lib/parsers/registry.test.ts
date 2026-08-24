@@ -40,6 +40,45 @@ describe("Slack parser registry", () => {
     expect(result?.values.packageName).toBe(plan);
   });
 
+  it.each([
+    ["Edge Essential Plan (Half) -$400", 400],
+    ["Edge Essential Plan (Half) $400", 400],
+    ["Edge Essential Plan -$800", 800],
+    ["Edge Pro Plan -$990", 990],
+    ["Edge Executive Plan $1,499", 1499],
+    ["Essential Plan Residential | 799$", 799],
+    ["Essential Plan Residential | $799", 799],
+    ["Essential Plan Residential | 799 USD", 799],
+  ] as const)("parses a format-tolerant plan price: %s", (planPrice, expected) => {
+    const message = `Customer <tel:+15551234567|+15551234567> | <mailto:test@example.com|test@example.com> | ${planPrice} | ZIPs: 75001`;
+    expect(parserRegistry.parse("leadsedge-sale", input(message))?.values.amount).toBe(expected);
+  });
+
+  it.each([
+    "Min. Price Point $400K",
+    "Onboarding Completed | Min. Price Point $300K",
+  ])("does not treat a property price point as sale revenue: %s", (message) => {
+    expect(parserRegistry.parse("leadsedge-sale", input(message))).toBeNull();
+  });
+
+  it("does not parse a K-suffixed property value even beside a recognized plan", () => {
+    const message = "Customer <tel:+15551234567|+15551234567> | Edge Essential Plan | Min. Price Point $400K";
+    expect(parserRegistry.parse("leadsedge-sale", input(message))?.values.amount).toBeNull();
+  });
+
+  it("keeps the top-level plan price when unrelated thread text contains a price point", () => {
+    const message = "Customer <tel:+15551234567|+15551234567> | <mailto:test@example.com|test@example.com> | Edge Essential Plan (Half) -$400 | ZIPs: 75001\nthread reply: Min. Price Point $400K";
+    expect(parserRegistry.parse("leadsedge-sale", input(message))?.values.amount).toBe(400);
+  });
+
+  it("flags a recognized sale with an apparent but unparsed price for review", () => {
+    const message = "Customer <tel:+15551234567|+15551234567> | Edge Essential Plan promotional service configuration pending - $400";
+    const result = parserRegistry.parse("leadsedge-sale", input(message));
+    expect(result?.recordType).toBe("SALE");
+    expect(result?.values.amount).toBeNull();
+    expect(result?.warnings).toContain("price_parse_failed");
+  });
+
   it("parses Slack-formatted lead fields", () => {
     const result = parserRegistry.parse("leads", input("*Lead Type: Buyer*\nName: Andy Teasley\nPhone: (760) 343-2404\nType of property: Single family house\nState: CA"));
     expect(result?.recordType).toBe("LEAD");

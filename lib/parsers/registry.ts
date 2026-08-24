@@ -35,17 +35,31 @@ class SaleParser implements SlackMessageParser {
   constructor(public readonly key: string) {}
   parse(input: ParserInput): ParseResult | null {
     const f = extractFields(input.text);
-    const inlineAmount = input.text.match(/\b(?:edge\s+[a-z][a-z\s-]*?\s+plan|plan|package|revenue|sale(?:\s+amount)?|total)\s*(?:-|:)?\s*(?:USD|PKR)?\s*\$?\s*([\d][\d,' ]*(?:\.\d+)?)/i)?.[1] ?? null;
+    const inlineAmount = salePriceFromPlanSegment(input.text);
     const parsedAmount = money(first(f, "revenue", "sale amount", "amount", "total") ?? inlineAmount);
     const amount = parsedAmount == null ? null : Math.abs(parsedAmount);
     const phone = slackLinkLabel(first(f, "phone", "number", "contact", "cell number")) ?? input.text.match(/<tel:[^|>]+\|([^>]+)>/i)?.[1] ?? null;
     const email = slackLinkLabel(first(f, "email")) ?? input.text.match(/<mailto:[^|>]+\|([^>]+)>/i)?.[1] ?? input.text.match(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/)?.[0] ?? null;
-    const packageName = first(f, "package", "plan") ?? input.text.match(/\b(Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan)\b/i)?.[1]?.trim() ?? null;
+    const packageName = first(f, "package", "plan") ?? input.text.match(/\b(Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan(?:\s*\([^|\n)]{1,30}\)|\s+Half)?|Essential\s+Plan\s+Residential)/i)?.[1]?.trim() ?? null;
     if ((!phone && !email) || (!packageName && !/\b(?:sold|closed deal)\b/i.test(input.text))) return null;
     const zipText = first(f, "zip", "zips", "zip codes") ?? input.text.match(/\bZIPs?\s*:\s*([^|\n]+)/i)?.[1] ?? "";
-    const warnings = amount == null ? ["Sale amount missing in source message"] : [];
+    const apparentPlanPrice = Boolean(packageName && /(?:-?\$\s*[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)?\s*(?:\$|USD\b))/i.test(input.text));
+    const warnings = amount == null
+      ? apparentPlanPrice ? ["price_parse_failed", "needs_review: recognized sale plan has an unparsed price token"] : ["Sale amount missing in source message"]
+      : [];
     return { recordType: "SALE", rawSourceId: input.rawSourceId, confidence: amount == null ? 0.82 : 0.96, warnings, values: { customerName: first(f, "customer", "client", "name") ?? input.text.match(/^\s*([^<|\n]+?)\s*<tel:/)?.[1]?.trim() ?? null, phone, email, packageName, amount, currency: first(f, "currency") ?? (input.text.includes("PKR") ? "PKR" : "USD"), state: first(f, "state") ?? input.text.match(/\|\s*([A-Z]{2})\s*\|/)?.[1] ?? null, zipCodes: [...zipText.matchAll(/\b\d{5}\b/g)].map((match) => match[0]) } };
   }
+}
+
+/**
+ * Extracts revenue only from the recognized plan portion of a top-level sale.
+ * The bounded descriptor permits variants such as `(Half)` without scanning
+ * unrelated fields like `Min. Price Point $400K` elsewhere in the message.
+ */
+export function salePriceFromPlanSegment(text: string) {
+  const match = text.match(/\b(?:Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan|Essential\s+Plan\s+Residential)(?:\s*\([^|\n)]{1,30}\)|\s+Half)?[^\d$|\n]{0,20}[|:\-\s]{0,8}(?:-\s*)?(?:\$\s*([\d,]+(?:\.\d+)?)(?![\d,]|\s*[KM]\b)|([\d,]+(?:\.\d+)?)(?![\d,])\s*(?:\$|USD\b)(?!\s*[KM]\b))/i);
+  const value = match?.[1] ?? match?.[2] ?? null;
+  return value?.replace(/,/g, "") ?? null;
 }
 
 // Evidenced ISA phone labels. Longer labels lead the alternation so it cannot stop early on "phone" or "contact".

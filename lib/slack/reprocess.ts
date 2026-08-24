@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   appointments,
@@ -111,18 +111,34 @@ export async function reprocessStoredSlackMessages(
   return output;
 }
 
+/** Reprocesses one persisted Slack source through the same parser/upsert path. */
+export async function reprocessStoredSlackSource(slackChannelId: string, slackTs: string) {
+  const db = getDb();
+  if (!db) throw new Error("DATABASE_URL is required.");
+  const [channel] = await db.select().from(slackChannels).where(and(
+    eq(slackChannels.slackChannelId, slackChannelId),
+    eq(slackChannels.active, true),
+  )).limit(1);
+  if (!channel) throw new Error("Active Slack channel mapping not found.");
+  return db.transaction((transaction) => reprocessChannel(transaction, channel, slackTs));
+}
+
 type Database = Parameters<Parameters<NonNullable<ReturnType<typeof getDb>>["transaction"]>[0]>[0];
 
-async function reprocessChannel(transaction: Database, channel: Channel): Promise<ChannelProgress> {
+async function reprocessChannel(transaction: Database, channel: Channel, onlySlackTs?: string): Promise<ChannelProgress> {
   await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${'slack-reprocess:' + channel.id}))`);
-  const before = await transaction.select({ id: slackMessages.id, employeeId: slackMessages.employeeId }).from(slackMessages).where(eq(slackMessages.channelId, channel.id));
+  const sourceFilter = onlySlackTs
+    ? and(eq(slackMessages.channelId, channel.id), eq(slackMessages.slackTs, onlySlackTs))
+    : eq(slackMessages.channelId, channel.id);
+  const before = await transaction.select({ id: slackMessages.id, employeeId: slackMessages.employeeId }).from(slackMessages).where(sourceFilter);
 
-  await transaction.update(slackMessages).set({ employeeId: null, parserType: channel.parserType }).where(eq(slackMessages.channelId, channel.id));
+  await transaction.update(slackMessages).set({ employeeId: null, parserType: channel.parserType }).where(sourceFilter);
   await transaction.execute(sql`update slack_messages sm set employee_id=si.employee_id
     from employee_slack_identities si
-    where sm.channel_id=${channel.id} and si.workspace_id=sm.workspace_id and si.slack_user_id=sm.slack_user_id`);
+    where sm.channel_id=${channel.id} ${onlySlackTs ? sql`and sm.slack_ts=${onlySlackTs}` : sql``}
+      and si.workspace_id=sm.workspace_id and si.slack_user_id=sm.slack_user_id`);
 
-  const messages = await transaction.select().from(slackMessages).where(eq(slackMessages.channelId, channel.id));
+  const messages = await transaction.select().from(slackMessages).where(sourceFilter);
   const identities = await transaction.select().from(slackIdentities).where(eq(slackIdentities.workspaceId, channel.workspaceId));
   const identityBySlackUser = new Map(identities.map((identity) => [identity.slackUserId, identity.employeeId]));
   const attributionUpdated = messages.filter((message) => before.find((old) => old.id === message.id)?.employeeId !== message.employeeId).length;
