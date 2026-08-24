@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, CalendarCheck2, CircleDollarSign, Clock3, Copy, LoaderCircle, PhoneCall, Target, TrendingUp, UserRound, X } from "lucide-react";
 import type { Activity, AssignedCall, Employee, EmployeeDetailData, TargetProgress } from "@/types/dashboard";
-import { appointmentSetterMilestones, closerQualification, targetRoleForTitle } from "@/lib/performance-targets";
+import { closerQualification, targetRoleForTitle } from "@/lib/performance-targets";
 import { TargetPanel } from "./TargetPanel";
 import { TrendChart } from "./TrendChart";
 
@@ -54,7 +54,7 @@ function EmployeeDetail({ employee, detail, loading, openActivity }: { employee:
     {tab==="calls"?<CallsScheduled calls={assignedCalls} loading={loading}/>:<>
     {employee.leadership ? <div className="no-target-panel"><UserRound size={22}/><div><strong>Leadership profile</strong><p>Visible operational activity, without automatic appointment or sales quotas.</p></div></div> : <div className="profile-kpis"><article><span>{employee.metricLabel}</span><strong>{employee.metricValue}</strong><small>{employee.submittedLeads != null && employee.submittedLeads > Number(employee.metricValue) ? `${employee.submittedLeads} submitted · ${employee.excludedLeads} excluded` : "Selected period"}</small></article><TargetTile employee={employee} progress={detail?.targetProgress}/><article><span>Trend</span><strong className={(employee.trend ?? 0) >= 0 ? "positive" : "negative"}>{employee.trend == null?"—":`${employee.trend >= 0 ? "+" : ""}${employee.trend}%`}</strong><small>vs prior period</small></article></div>}
     {employee.teams.length > 1 && <div className="multi-team-note"><ArrowUpRight size={17}/><div><strong>Multi-team employee</strong><p>Each role is measured independently. No combined artificial performance score.</p></div></div>}
-    {!employee.leadership && <><div className="profile-section-title"><div><p className="eyebrow">Selected period</p><h3>{metricLabel} trend</h3></div><TrendingUp size={17}/></div><div className="profile-chart">{loading?<div className="drawer-loading"><LoaderCircle className="spin"/> Loading evidence…</div>:<TrendChart data={detail?.trend??[]} label={metricLabel}/>}</div>{employee.completion!=null&&<div className="goal-progress"><div><span><Target size={15}/> {detail?.targetProgress ? `${detail.targetProgress.monthLabel} target` : "Effective target"}</span><strong>{employee.completion}%</strong></div><i><em style={{ width: `${Math.min(employee.completion, 100)}%` }}/></i></div>}</>}
+    {!employee.leadership && <><div className="profile-section-title"><div><p className="eyebrow">Selected period</p><h3>{metricLabel} trend</h3></div><TrendingUp size={17}/></div><div className="profile-chart">{loading?<div className="drawer-loading"><LoaderCircle className="spin"/> Loading evidence…</div>:<TrendChart data={detail?.trend??[]} label={metricLabel}/>}</div>{employee.completion!=null&&detail?.targetProgress?.role!=="CLOSER"&&<div className="goal-progress"><div><span><Target size={15}/> Selected-period target</span><strong>{employee.completion}%</strong></div><i><em style={{ width: `${Math.min(employee.completion, 100)}%` }}/></i></div>}</>}
     <div className="profile-section-title"><div><p className="eyebrow">Chronological evidence</p><h3>Activity in this period</h3></div><Clock3 size={17}/></div>{loading?<div className="drawer-loading"><LoaderCircle className="spin"/> Loading records…</div>:activities.length ? <div className="profile-activity">{activities.map((item) => <button key={`${item.type}-${item.id}`} onClick={() => openActivity(item)}><i/><div><strong>{item.type}{item.type === "Lead" && item.countsTowardKpi === false ? <em className="lead-row-flag">Excluded</em> : null}</strong><p>{item.summary}</p><small>{item.timestamp} · #{item.channel}</small></div><ArrowUpRight size={14}/></button>)}</div> : <div className="empty-state"><Clock3 size={22}/><strong>No Slack records in this period.</strong><p>Change the date range to inspect historical activity.</p></div>}
     {detail?.targetProgress&&<TargetPanel employee={employee} progress={detail.targetProgress}/>}
     </>}
@@ -62,7 +62,7 @@ function EmployeeDetail({ employee, detail, loading, openActivity }: { employee:
 }
 
 /**
- * The monthly target tile.
+ * The selected-period target tile.
  *
  * A percentage is only meaningful for a role whose target is a single countable
  * quantity, which is true of Lead Generators and of nobody else. A Closer
@@ -77,31 +77,23 @@ function TargetTile({ employee, progress }: { employee: Employee; progress?: Tar
   if (role === "CLOSER") {
     if (!progress) return <article><span>Closer qualification</span><strong>Loading…</strong><small>$2,000 revenue OR 2 closed sales</small></article>;
     const qualification = closerQualification(progress.revenue, progress.closedSales);
-    return <article><span>Monthly qualification</span>
-      <strong className={qualification.qualified ? "positive" : ""}>{qualification.qualified ? "Qualified" : "Not yet"}</strong>
-      <small>{qualification.requirement}</small></article>;
+    return <article><span>Qualification</span>
+      <strong className={qualification.qualified ? "positive" : ""}>{qualification.qualified ? "Qualified" : "Not Qualified"}</strong>
+      <small>{moneyShort(progress.revenue)} / $2,000 · {progress.closedSales} / 2 sales</small></article>;
   }
   if (role === "APPOINTMENT_SETTER") {
-    if (!progress) return <article><span>Qualified call target</span><strong>Target 13</strong><small>Loading monthly progress…</small></article>;
-    // Neither official setter target has a source field, so the tile says so
-    // rather than reporting a zero the setter would appear to have earned.
-    if (!progress.revenueAttributedToRole) {
-      return <article><span>Monthly target</span>
-        <strong>Not measured</strong>
-        <small>See performance targets below</small></article>;
-    }
-    const ladder = appointmentSetterMilestones(progress.revenue);
-    return <article><span>Revenue milestone</span>
-      <strong>{ladder.currentMilestone == null ? "None yet" : `$${ladder.currentMilestone.toLocaleString("en-US")}`}</strong>
-      <small>{ladder.nextMilestone == null ? "Highest milestone reached" : `Next $${ladder.nextMilestone.toLocaleString("en-US")}`}</small></article>;
+    if (!progress) return <article><span>Qualified call target</span><strong>Target 13</strong><small>Loading selected-period progress…</small></article>;
+    return <article><span>Qualified calls</span><strong>{progress.qualifiedCalls} / 13</strong><small>Selected period</small></article>;
   }
   if (role === "LEAD_GENERATOR" && !progress) {
-    return <article><span>Monthly lead target</span><strong>Target 26</strong><small>Team target 450 · Loading progress…</small></article>;
+    return <article><span>Lead target</span><strong>Target 26</strong><small>Team target 450 · Loading progress…</small></article>;
   }
   return <article><span>Target completion</span>
     <strong>{employee.completion == null ? "—" : `${employee.completion}%`}</strong>
-    <small>{progress?.role === "LEAD_GENERATOR" ? `${progress.monthlyLeads} counted leads in ${progress.monthLabel}` : employee.status}</small></article>;
+    <small>{progress?.role === "LEAD_GENERATOR" ? `${progress.leads} counted leads in selected period` : employee.status}</small></article>;
 }
+
+const moneyShort = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 
 /**
  * Calls a setter booked and assigned to this employee to conduct.

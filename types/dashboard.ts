@@ -70,9 +70,9 @@ export interface AssignedCall {
 
 export interface TargetProgress {
   role: "APPOINTMENT_SETTER" | "CLOSER" | "LEAD_GENERATOR" | "OTHER";
-  monthLabel: string;
-  monthStart: string;
-  monthEnd: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
   revenue: number;
   closedSales: number;
   /**
@@ -81,7 +81,7 @@ export interface TargetProgress {
    * call was held or qualified, so the two must never be equated.
    */
   appointmentsBooked: number;
-  /** False while no qualified-call disposition is captured anywhere upstream. */
+  qualifiedCalls: number;
   qualifiedCallsTracked: boolean;
   /**
    * Whether this employee's job title ever receives revenue attribution at all.
@@ -90,8 +90,8 @@ export interface TargetProgress {
    * rather than merely zero this month.
    */
   revenueAttributedToRole: boolean;
-  monthlyLeads: number;
-  monthlyTeamLeads: number;
+  leads: number;
+  teamLeads: number;
 }
 
 export interface EmployeeDetailData {

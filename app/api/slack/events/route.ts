@@ -1,4 +1,5 @@
 import { ingestSlackEvent } from "@/lib/slack/ingest";
+import { ingestAppointmentDispositionEvent } from "@/lib/slack/appointment-dispositions";
 import { ingestSlackReactionEvent } from "@/lib/slack/reaction-events";
 import { recordSlackEventOutcome } from "@/lib/slack/observability";
 import { verifySlackSignature } from "@/lib/slack/signature";
@@ -62,7 +63,9 @@ export async function POST(request: Request) {
   try {
     const outcome = routing.action === "reaction"
       ? await ingestSlackReactionEvent(payload as unknown as SlackReactionEventCallback)
-      : await ingestSlackEvent(callback);
+      : routing.action === "appointment-disposition"
+        ? await ingestAppointmentDispositionEvent(callback)
+        : await ingestSlackEvent(callback);
     const status = (outcome as { status: string }).status;
     const reason = (outcome as { reason?: string }).reason ?? null;
     const recordType = (outcome as { recordType?: string }).recordType ?? null;

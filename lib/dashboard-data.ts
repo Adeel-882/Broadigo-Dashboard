@@ -2,7 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { primaryMetricForTitle } from "@/lib/dashboard-metrics";
-import { targetMonthFor, targetRoleForTitle } from "@/lib/performance-targets";
+import { targetRoleForTitle } from "@/lib/performance-targets";
 import { occurredAt, operationalDateSql, operationalShiftFilter } from "@/lib/operational-query";
 import { leadExclusionLabel, type LeadExclusionReason } from "@/lib/slack/reactions";
 import { resolveDateRange } from "@/lib/time-ranges";
@@ -104,13 +104,6 @@ const teamActivity = (current: (column: string) => ReturnType<typeof sql>) => sq
   select employee_id, team_id from media_activity where ${current("occurred_at")} and employee_id is not null and team_id is not null
 `;
 
-/** 19:00 on the month's first operational day, to 05:00 after its last. */
-function karachiMonthBoundary(date: string, edge: "start" | "end") {
-  const [year, month, day] = date.split("-").map(Number);
-  const base = Date.UTC(year, month - 1, day, edge === "start" ? 19 : 24 + 5) - 5 * 60 * 60 * 1000;
-  return new Date(base).toISOString();
-}
-
 function emptyData(period: PeriodKey, range: ReturnType<typeof resolveDateRange>): DashboardData {
   return { mode: "disconnected", timezone: "Asia/Karachi", period, range: serializedRange(range), generatedAt: new Date().toISOString(), metrics: [], divisions: [], teams: [], employees: [], activities: [], docks: [], targets: [], trend: [], health: { raw: 0, parsed: 0, unparsed: 0, errors: 0, unmatchedMessages: 0, unmappedEmployees: 0, unattributedDocks: 0, lastEventAt: null, newestMessageAt: null, lastSyncAt: null, channels: [] } };
 }
@@ -130,9 +123,7 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
   const {start,end,previousStart,previousEnd}=dashboardRange(range);
   const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
   const previous=(column:string)=>operationalShiftFilter(occurredAt(column),previousStart,previousEnd);
-  const targetMonth=targetMonthFor(range.endDate);
-  const monthWindow=(column:string)=>operationalShiftFilter(occurredAt(column),karachiMonthBoundary(targetMonth.startDate,"start"),karachiMonthBoundary(targetMonth.endDate,"end"));
-  const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult, appointmentsByTeamResult, monthlyActualResult] = await Promise.all([
+  const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult, appointmentsByTeamResult] = await Promise.all([
     db.execute(sql`select
       (select count(*) from appointments where ${current("occurred_at")})::int appointments,
       (select count(*) from appointments where ${previous("occurred_at")})::int appointments_prev,
@@ -161,6 +152,7 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
     db.execute(sql`select employee_id, metric, sum(current_value)::numeric current_value, sum(previous_value)::numeric previous_value from (
       select employee_id, 'appointments' metric, count(*) filter(where ${current("occurred_at")}) current_value, count(*) filter(where ${previous("occurred_at")}) previous_value from appointments group by employee_id
       union all select employee_id, 'revenue', coalesce(sum(amount) filter(where ${current("occurred_at")}),0), coalesce(sum(amount) filter(where ${previous("occurred_at")}),0) from sales group by employee_id
+      union all select employee_id, 'sales', count(*) filter(where ${current("occurred_at")}), count(*) filter(where ${previous("occurred_at")}) from sales group by employee_id
       union all select l.employee_id, 'leads', count(*) filter(where ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}), count(*) filter(where ${previous("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) from leads l group by l.employee_id
       union all select l.employee_id, 'leads_submitted', count(*) filter(where ${current("l.occurred_at")} and ${isaLeadMembership("l.employee_id", "l.occurred_at")}), 0 from leads l group by l.employee_id
       union all select employee_id, 'work', count(*) filter(where ${current("occurred_at")}), count(*) filter(where ${previous("occurred_at")}) from media_activity group by employee_id
@@ -195,15 +187,6 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
       from appointments a join teams t on t.id=a.team_id
       where ${current("a.occurred_at")} and a.employee_id is not null
       group by a.employee_id, t.name`),
-    // Monthly targets are judged on the whole calendar month, so their progress
-    // needs the month's own totals rather than the selected range's.
-    db.execute(sql`select employee_id, metric, sum(value)::numeric value from (
-      select employee_id, 'appointments' metric, count(*)::numeric value from appointments where ${monthWindow("occurred_at")} group by employee_id
-      union all select employee_id, 'revenue', coalesce(sum(amount),0) from sales where ${monthWindow("occurred_at")} group by employee_id
-      union all select employee_id, 'sales', count(*)::numeric from sales where ${monthWindow("occurred_at")} group by employee_id
-      union all select l.employee_id, 'leads', count(*)::numeric from leads l where ${monthWindow("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")} group by l.employee_id
-      union all select employee_id, 'work', count(*)::numeric from media_activity where ${monthWindow("occurred_at")} group by employee_id
-    ) m where employee_id is not null group by employee_id, metric`),
   ]);
   const summary = rows(summaryResult)[0] ?? {}; const outputs = rows(outputResult); const outputByEmployeeMetric = new Map(outputs.map((r) => [`${text(r.employee_id)}:${text(r.metric)}`, r])); const targetRows=rows(targetResult); const days=range.dayCount;
   const appointmentsByEmployeeTeam = new Map<string, Record<string, number>>();
@@ -213,19 +196,17 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
     entry[text(row.team)] = num(row.appointments);
     appointmentsByEmployeeTeam.set(key, entry);
   }
-  const monthlyActualByEmployee = new Map<string, number>();
-  for (const row of rows(monthlyActualResult)) monthlyActualByEmployee.set(`${text(row.employee_id)}:${text(row.metric)}`, num(row.value));
   const people: Employee[] = rows(peopleResult).map((r) => { const metric=primaryMetricForTitle(text(r.job_title)); const output = outputByEmployeeMetric.get(`${text(r.id)}:${metric}`); const submittedOutput = metric === "leads" ? outputByEmployeeMetric.get(`${text(r.id)}:leads_submitted`) : undefined; const appointmentsOutput = outputByEmployeeMetric.get(`${text(r.id)}:appointments`); const current = num(output?.current_value); const previous = num(output?.previous_value); const label = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Work updates"; const teams=r.teams as string[]; const matchingTargets=targetRows.filter(t=>text(t.metric).toLowerCase()===metric); const configured=resolveTarget(matchingTargets,text(r.canonical_name),teams,text(r.job_title));
     // A role can carry official targets whose input the data model does not
     // record — an Appointment Setter's qualified calls and revenue milestones
     // both have no source field. Those people are reported as unmeasured rather
     // than as having no target at all.
-    const roleHasTarget=resolveTarget(targetRows,text(r.canonical_name),teams,text(r.job_title))!=null; const monthly=text(configured?.period)==="MONTHLY";const effective=configured?num(configured.value)*(monthly?1:targetScale(configured.period,days)):null; const progressValue=monthly?num(monthlyActualByEmployee.get(`${text(r.id)}:${metric}`)):current;let completion=effective&&effective>0?Math.round(progressValue/effective*100):null;
+    const roleHasTarget=resolveTarget(targetRows,text(r.canonical_name),teams,text(r.job_title))!=null; const fixed=text(configured?.period)==="MONTHLY";const effective=configured?num(configured.value)*(fixed?1:targetScale(configured.period,days)):null;let completion=effective&&effective>0?Math.round(current/effective*100):null;
     if(targetRoleForTitle(text(r.job_title))==="CLOSER"){
-      const composite=closerCompletion(targetRows,text(r.canonical_name),teams,text(r.job_title),num(monthlyActualByEmployee.get(`${text(r.id)}:revenue`)),num(monthlyActualByEmployee.get(`${text(r.id)}:sales`)));
+      const composite=closerCompletion(targetRows,text(r.canonical_name),teams,text(r.job_title),current,num(outputByEmployeeMetric.get(`${text(r.id)}:sales`)?.current_value));
       if(composite!=null)completion=composite;
     } return { id: text(r.id), name: text(r.canonical_name), initials: initials(text(r.canonical_name)), title: text(r.job_title), teams, activityTeams: (r.activity_teams ?? []) as string[], divisions: r.divisions as string[], aliases: r.aliases as string[], leadership: (r.leadership_level || undefined) as Employee["leadership"], rankingEnabled: Boolean(r.ranking_enabled), active: Boolean(r.active), status: statusFrom(completion, roleHasTarget), completion:completion??undefined, metricLabel: label, metricValue: metric === "revenue" ? money(current) : String(current), metricValueNumber: current, trend: delta(current, previous) ?? undefined, submittedLeads: submittedOutput ? num(submittedOutput.current_value) : undefined, excludedLeads: submittedOutput ? num(submittedOutput.current_value) - current : undefined, appointmentsBooked: num(appointmentsOutput?.current_value), appointmentsByTeam: appointmentsByEmployeeTeam.get(text(r.id)) ?? {} }; });
-  const teamRows = rows(teamResult); const teamMetrics = teamRows.map((r) => { const kind = text(r.type); const metricName=kind === "CLOSER" ? "revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work" : "appointments"; const value = num(r[metricName]); const label = kind === "CLOSER" ? "reported revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work updates" : "appointments"; const target=targetRows.find(t=>!t.employee&&text(t.team)===text(r.name)&&text(t.metric).toLowerCase()===metricName); const effective=target?num(target.value)*targetScale(target.period,days):null; const progress=effective&&effective>0?Math.round(value/effective*100):null; return { id: text(r.id), division: text(r.division), name: text(r.name), role: kind, metric: kind === "CLOSER" ? money(value) : String(value), label, status: statusFrom(progress), progress, members: r.members as string[], memberCount: num(r.member_count) }; });
+  const teamRows = rows(teamResult); const teamMetrics = teamRows.map((r) => { const kind = text(r.type); const metricName=kind === "CLOSER" ? "revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work" : "appointments"; const value = num(r[metricName]); const label = kind === "CLOSER" ? "reported revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work updates" : "appointments"; const targetMetric=kind === "ISA" ? "team_leads" : metricName; const target=targetRows.find(t=>!t.employee&&text(t.team)===text(r.name)&&text(t.metric).toLowerCase()===targetMetric); const fixed=text(target?.period)==="MONTHLY"; const effective=target?num(target.value)*(fixed?1:targetScale(target.period,days)):null; const progress=effective&&effective>0?Math.round(value/effective*100):null; return { id: text(r.id), division: text(r.division), name: text(r.name), role: kind, metric: kind === "CLOSER" ? money(value) : String(value), label, status: statusFrom(progress), progress, members: r.members as string[], memberCount: num(r.member_count) }; });
   const divisionNames = [...new Set(teamRows.map((r) => text(r.division)))];
   const activity: Activity[] = rows(activityResult).map(activityFromRow);
   return { mode: "live", timezone: "Asia/Karachi", period, range: serializedRange(range), generatedAt: new Date().toISOString(),
@@ -282,20 +263,15 @@ export async function getEmployeeDetail(employeeId: string, period: PeriodKey = 
     order by coalesce(a.scheduled_at, a.occurred_at) desc
     limit 500`);
 
-  // Monthly targets are measured over a whole calendar month, never scaled to the
-  // dashboard's selected range.
-  const month = targetMonthFor(range.endDate);
-  const monthWindow = (column: string) => operationalShiftFilter(
-    occurredAt(column),
-    karachiMonthBoundary(month.startDate, "start"),
-    karachiMonthBoundary(month.endDate, "end"),
-  );
-  const [monthlyResult] = rows(await db.execute(sql`select
-    (select coalesce(sum(amount),0)::numeric from sales where employee_id=${employeeId}::uuid and ${monthWindow("occurred_at")}) revenue,
-    (select count(*)::int from sales where employee_id=${employeeId}::uuid and ${monthWindow("occurred_at")}) closed_sales,
-    (select count(*)::int from appointments where employee_id=${employeeId}::uuid and ${monthWindow("occurred_at")}) appointments_booked,
-    (select count(*)::int from leads l where l.employee_id=${employeeId}::uuid and ${monthWindow("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) monthly_leads,
-    (select count(*)::int from leads l where ${monthWindow("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) monthly_team_leads,
+  // Official target values are fixed, while every numerator follows the same
+  // active operational range as the employee's headline KPI and evidence.
+  const [periodResult] = rows(await db.execute(sql`select
+    (select coalesce(sum(amount),0)::numeric from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) revenue,
+    (select count(*)::int from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) closed_sales,
+    (select count(*)::int from appointments where employee_id=${employeeId}::uuid and ${current("occurred_at")}) appointments_booked,
+    (select count(*)::int from appointments where employee_id=${employeeId}::uuid and qualification_status='QUALIFIED' and ${current("occurred_at")}) qualified_calls,
+    (select count(*)::int from leads l where l.employee_id=${employeeId}::uuid and ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) leads,
+    (select count(*)::int from leads l where ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) team_leads,
     (select count(*)::int from sales s join employees peer on peer.id = s.employee_id
        where peer.job_title = ${text(employeeRow.job_title)}) role_sale_rows`));
 
@@ -322,16 +298,15 @@ export async function getEmployeeDetail(employeeId: string, period: PeriodKey = 
     })),
     targetProgress: {
       role: targetRoleForTitle(text(employeeRow.job_title)),
-      monthLabel: month.label, monthStart: month.startDate, monthEnd: month.endDate,
-      revenue: num(monthlyResult?.revenue),
-      closedSales: num(monthlyResult?.closed_sales),
-      // Appointments booked. Deliberately not reported as qualified calls:
-      // no qualified-call disposition exists upstream to read.
-      appointmentsBooked: num(monthlyResult?.appointments_booked),
-      qualifiedCallsTracked: false,
-      revenueAttributedToRole: num(monthlyResult?.role_sale_rows) > 0,
-      monthlyLeads: num(monthlyResult?.monthly_leads),
-      monthlyTeamLeads: num(monthlyResult?.monthly_team_leads),
+      periodLabel: range.label, periodStart: range.startDate, periodEnd: range.endDate,
+      revenue: num(periodResult?.revenue),
+      closedSales: num(periodResult?.closed_sales),
+      appointmentsBooked: num(periodResult?.appointments_booked),
+      qualifiedCalls: num(periodResult?.qualified_calls),
+      qualifiedCallsTracked: true,
+      revenueAttributedToRole: num(periodResult?.role_sale_rows) > 0,
+      leads: num(periodResult?.leads),
+      teamLeads: num(periodResult?.team_leads),
     },
   };
 }

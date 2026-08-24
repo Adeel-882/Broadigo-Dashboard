@@ -304,18 +304,16 @@ describe("excluded leads never advance lead generator progress", () => {
 });
 
 describe("appointments are never reported as qualified calls", () => {
-  // No field in the data model records whether a booked call was held or
-  // qualified, so the panel must show the requirement as unmeasured rather than
-  // substituting the appointment count.
-  const progress = { appointmentsBooked: 36, qualifiedCallsTracked: false };
+  const progress = { appointmentsBooked: 36, qualifiedCalls: 8, qualifiedCallsTracked: true };
 
   it("does not treat booked appointments as a qualified-call figure", () => {
-    expect(progress.qualifiedCallsTracked).toBe(false);
+    expect(progress.qualifiedCalls).not.toBe(progress.appointmentsBooked);
   });
 
   it("would not report a setter as having met the target on appointments alone", () => {
-    const shown = progress.qualifiedCallsTracked ? qualifiedCallsProgress(progress.appointmentsBooked) : null;
-    expect(shown).toBeNull();
+    const shown = progress.qualifiedCallsTracked ? qualifiedCallsProgress(progress.qualifiedCalls) : null;
+    expect(shown?.actual).toBe(8);
+    expect(shown?.met).toBe(false);
   });
 
   it("still measures qualified calls correctly once a real figure exists", () => {

@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ingestSlackEvent = vi.fn();
 const ingestSlackReactionEvent = vi.fn();
+const ingestAppointmentDispositionEvent = vi.fn();
 const recordSlackEventOutcome = vi.fn();
 const verifySlackSignature = vi.fn(() => true);
 
 vi.mock("@/lib/slack/ingest", () => ({ ingestSlackEvent }));
 vi.mock("@/lib/slack/reaction-events", () => ({ ingestSlackReactionEvent }));
+vi.mock("@/lib/slack/appointment-dispositions", () => ({ ingestAppointmentDispositionEvent }));
 vi.mock("@/lib/slack/observability", () => ({ recordSlackEventOutcome }));
 vi.mock("@/lib/slack/signature", () => ({ verifySlackSignature }));
 
@@ -92,13 +94,23 @@ describe("Slack delivery endpoint", () => {
   });
 
   it.each([
-    ["thread reply", { thread_ts: "1787000000.000100" }, "thread-or-message-subtype"],
     ["bot subtype", { subtype: "bot_message" }, "thread-or-message-subtype"],
   ])("logs an ignored %s instead of discarding it", async (_label, overrides, reason) => {
     const response = await post(messageEvent(overrides));
     expect(response.status).toBe(200);
     expect(ingestSlackEvent).not.toHaveBeenCalled();
     expect(recordSlackEventOutcome).toHaveBeenCalledWith(expect.objectContaining({ result: "ignored", reason }));
+  });
+
+  it("routes a thread reply to appointment disposition ingestion", async () => {
+    ingestAppointmentDispositionEvent.mockResolvedValue({ status: "applied", qualificationStatus: "QUALIFIED" });
+    const response = await post(messageEvent({ text: "Qualified", thread_ts: "1787000000.000100" }));
+    expect(response.status).toBe(200);
+    expect(ingestAppointmentDispositionEvent).toHaveBeenCalledTimes(1);
+    expect(ingestSlackEvent).not.toHaveBeenCalled();
+    expect(recordSlackEventOutcome).toHaveBeenCalledWith(expect.objectContaining({
+      routingAction: "appointment-disposition", result: "applied",
+    }));
   });
 
   it("surfaces a thrown ingestion error as 500 so Slack retries", async () => {

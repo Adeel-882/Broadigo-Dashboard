@@ -15,25 +15,24 @@ import {
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 
 /**
- * Monthly performance targets for the employee's role.
+ * Fixed performance targets evaluated against the active dashboard period.
  *
  * These are performance milestones and qualification indicators only. No salary,
  * payroll, commission or bonus figure is derived or displayed. Progress is always
- * measured over the full calendar month named in the header, never over the
- * dashboard's selected reporting range.
+ * The target values stay fixed; their numerators follow the selected range.
  */
 export function TargetPanel({ employee, progress }: { employee: Employee; progress: TargetProgress }) {
   if (progress.role === "OTHER") return null;
 
   return <section className="target-panel">
     <div className="profile-section-title">
-      <div><p className="eyebrow">{progress.monthLabel} targets</p><h3>Performance targets</h3></div>
+      <div><p className="eyebrow">{progress.periodLabel}</p><h3>Performance targets</h3></div>
       <Target size={17}/>
     </div>
     {progress.role === "APPOINTMENT_SETTER" && <SetterTargets progress={progress}/>}
     {progress.role === "CLOSER" && <CloserTargets progress={progress}/>}
     {progress.role === "LEAD_GENERATOR" && <LeadTargets progress={progress}/>}
-    <p className="target-footnote">Monthly targets for {employee.title}. Progress covers {progress.monthStart} – {progress.monthEnd}.</p>
+    <p className="target-footnote">Fixed targets for {employee.title}. Current performance covers {progress.periodStart} – {progress.periodEnd}.</p>
   </section>;
 }
 
@@ -46,7 +45,7 @@ function SetterTargets({ progress }: { progress: TargetProgress }) {
   // Qualified calls are only rendered as a meter when a real qualified-call
   // disposition exists. Booked appointments are a different quantity and are
   // never substituted for it.
-  const calls = progress.qualifiedCallsTracked ? qualifiedCallsProgress(progress.appointmentsBooked) : null;
+  const calls = progress.qualifiedCallsTracked ? qualifiedCallsProgress(progress.qualifiedCalls) : null;
   return <>
     <p className="target-label">Revenue milestones</p>
     {!revenueTracked && <div className="target-unavailable">
@@ -77,7 +76,7 @@ function SetterTargets({ progress }: { progress: TargetProgress }) {
           <AlertTriangle size={15}/>
           <div>
             <strong>Not measurable yet — {QUALIFIED_CALLS_TARGET} required</strong>
-            <p>Slack records when a call is booked, but never whether it was held or qualified. Booked appointments are shown below instead; they are not the same measure and are not counted toward this target.</p>
+            <p>No qualifying disposition is available for this period. Booked appointments are shown separately and are never substituted.</p>
           </div>
         </div>}
     <div className="target-figure compact"><span>Appointments booked</span><strong>{progress.appointmentsBooked}</strong></div>
@@ -106,6 +105,7 @@ function CloserTargets({ progress }: { progress: TargetProgress }) {
       <span>Status</span>
       <strong className={qualification.qualified ? "qualified" : "not-qualified"}>{qualification.qualified ? "QUALIFIED" : "NOT QUALIFIED"}</strong>
     </div>
+    {qualification.qualified && <p className="target-note">Qualified via {qualification.revenueMet && qualification.salesMet ? "Revenue & Sales" : qualification.revenueMet ? "Revenue" : "Closed Sales"}.</p>}
     <p className="target-note">Requirement: {qualification.requirement}</p>
     <p className="target-label">Accelerator eligibility</p>
     <div className="target-figure compact">
@@ -117,7 +117,7 @@ function CloserTargets({ progress }: { progress: TargetProgress }) {
 }
 
 function LeadTargets({ progress }: { progress: TargetProgress }) {
-  const leads = leadGeneratorProgress(progress.monthlyLeads, progress.monthlyTeamLeads);
+  const leads = leadGeneratorProgress(progress.leads, progress.teamLeads);
   return <>
     <p className="target-label">Individual leads</p>
     <Meter value={leads.individual.actual} target={leads.individual.target} display={`${leads.individual.actual} / ${leads.individual.target}`} met={leads.individual.met}/>
@@ -127,10 +127,12 @@ function LeadTargets({ progress }: { progress: TargetProgress }) {
 }
 
 function Meter({ value, target, display, met }: { value: number; target: number; display: string; met?: boolean }) {
-  const percent = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0;
+  const percent = target > 0 ? Math.round((value / target) * 100) : 0;
+  const width = Math.min(100, percent);
   const reached = met ?? value >= target;
   return <div className="target-meter">
     <div><strong>{display}</strong><em className={reached ? "qualified" : ""}>{percent}%</em></div>
-    <i><span style={{ width: `${percent}%` }} className={reached ? "reached" : ""}/></i>
+    <i><span style={{ width: `${width}%` }} className={reached ? "reached" : ""}/></i>
+    <small>{value > target ? `${value - target} above target` : value === target ? "Target reached" : `${target - value} remaining`}</small>
   </div>;
 }

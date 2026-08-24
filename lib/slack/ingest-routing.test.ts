@@ -17,7 +17,7 @@ describe("live delivery classification", () => {
 
   it("ignores thread replies", () => {
     expect(classifySlackEnvelope(envelope(message({ thread_ts: "1787000000.000100" }))))
-      .toEqual({ action: "ignore", reason: "thread-or-message-subtype" });
+      .toEqual({ action: "appointment-disposition" });
   });
 
   it("keeps a top-level message whose thread_ts equals its own ts", () => {

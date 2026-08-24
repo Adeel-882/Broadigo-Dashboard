@@ -24,3 +24,12 @@ export function normalizeSlackMessageEvent(event: SlackMessageEvent) {
   }
   return isEligibleTopLevelMessage(event) ? event : null;
 }
+
+/** Normalizes only true thread replies, including message_changed payloads. */
+export function normalizeSlackThreadReplyEvent(event: SlackMessageEvent) {
+  const message = event.subtype === "message_changed" ? event.message : event;
+  if (!message?.text || !message.ts || !message.thread_ts || message.thread_ts === message.ts) return null;
+  if (event.subtype && event.subtype !== "message_changed") return null;
+  if (message.subtype) return null;
+  return { ...message, channel: event.channel } satisfies SlackMessageEvent;
+}

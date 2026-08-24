@@ -146,7 +146,26 @@ export const appointments = pgTable("appointments", {
   /** The setter's own wording, e.g. "tomorrow 10:00 AM EST". Preserved even when
    *  scheduledAt can be resolved so the UI can show the source phrasing. */
   scheduledText: text("scheduled_text"),
+  qualificationStatus: text("qualification_status").notNull().default("UNKNOWN"),
+  qualifiedAt: timestamp("qualified_at", { withTimezone: true }),
+  qualificationSourceTs: text("qualification_source_ts"),
+  qualificationEvaluatorSlackUserId: text("qualification_evaluator_slack_user_id"),
 }, (table) => [uniqueIndex("appointments_slack_message_unique").on(table.slackMessageId), index("appointments_employee_time_idx").on(table.employeeId, table.occurredAt), index("appointments_team_time_idx").on(table.teamId, table.occurredAt)]);
+
+/** Explicit Slack thread dispositions for an appointment. This preserves just
+ * enough evidence to recompute the latest assigned-closer decision after edits
+ * without creating another appointment or changing its setter ownership. */
+export const appointmentDispositions = pgTable("appointment_dispositions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  appointmentId: uuid("appointment_id").notNull().references(() => appointments.id),
+  slackReplyTs: text("slack_reply_ts").notNull(),
+  evaluatorSlackUserId: text("evaluator_slack_user_id").notNull(),
+  status: text("status").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("appointment_disposition_reply_unique").on(table.appointmentId, table.slackReplyTs),
+  index("appointment_disposition_latest_idx").on(table.appointmentId, table.slackReplyTs),
+]);
 
 export const sales = pgTable("sales", {
   ...activityBase,
