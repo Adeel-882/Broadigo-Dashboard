@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { primaryMetricForTitle } from "@/lib/dashboard-metrics";
+import { targetMonthFor, targetRoleForTitle } from "@/lib/performance-targets";
 import { occurredAt, operationalDateSql, operationalShiftFilter } from "@/lib/operational-query";
 import { leadExclusionLabel, type LeadExclusionReason } from "@/lib/slack/reactions";
 import { resolveDateRange } from "@/lib/time-ranges";
@@ -13,9 +14,45 @@ const text = (value: unknown) => String(value ?? "");
 const initials = (name: string) => name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 const delta = (current: number, previous: number) => previous ? Math.round(((current - previous) / previous) * 1000) / 10 : current ? 100 : null;
 const money = (value: number, currency = "USD") => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-const statusFrom = (completion: number | null): Status => completion == null ? "No Target" : completion >= 105 ? "Ahead" : completion >= 90 ? "On Track" : completion >= 75 ? "At Risk" : "Behind";
+const statusFrom = (completion: number | null, roleHasTarget = false): Status => completion == null ? (roleHasTarget ? "Not Measured" : "No Target") : completion >= 105 ? "Ahead" : completion >= 90 ? "On Track" : completion >= 75 ? "At Risk" : "Behind";
 const rows = (value: unknown) => value as Row[];
 function targetScale(period:unknown,days:number){return text(period)==="DAILY"?days:text(period)==="WEEKLY"?days/7:days/(365.2425/12)}
+/**
+ * Resolves the target that applies to one employee, most specific first:
+ * an employee-specific row, then a row scoped to a team they belong to, then a
+ * row scoped to their role. The role branch is what makes the official
+ * role-based definitions resolve at all — without it a row carrying only
+ * `role` matched nothing, because the query coalesces its missing team to the
+ * literal 'Company', which is never in an employee's team list.
+ */
+/**
+ * A Closer qualifies on revenue OR closed sales, so neither half alone describes
+ * their standing: a Closer with two sales and modest revenue is qualified, but a
+ * revenue-only percentage calls them Behind. Completion is therefore the better
+ * of the two paths, which reaches 100% exactly when the composite rule is met.
+ */
+function closerCompletion(targetRows: Row[], employeeName: string, teams: string[], jobTitle: string, revenue: number, sales: number) {
+  const targetFor = (metric: string) => {
+    const row = resolveTarget(targetRows.filter((t) => text(t.metric).toLowerCase() === metric), employeeName, teams, jobTitle);
+    return row && text(row.period) === "MONTHLY" ? num(row.value) : null;
+  };
+  const revenueTarget = targetFor("revenue"); const salesTarget = targetFor("sales");
+  if (!revenueTarget && !salesTarget) return null;
+  const ratios = [
+    revenueTarget && revenueTarget > 0 ? revenue / revenueTarget : null,
+    salesTarget && salesTarget > 0 ? sales / salesTarget : null,
+  ].filter((value): value is number => value != null);
+  return ratios.length ? Math.round(Math.max(...ratios) * 100) : null;
+}
+
+function resolveTarget(candidates: Row[], employeeName: string, teams: string[], jobTitle: string) {
+  const byEmployee = candidates.find((t) => text(t.employee) === employeeName);
+  if (byEmployee) return byEmployee;
+  const byTeam = candidates.find((t) => !t.employee && teams.includes(text(t.team)));
+  if (byTeam) return byTeam;
+  const role = targetRoleForTitle(jobTitle);
+  return candidates.find((t) => !t.employee && targetRoleForTitle(text(t.role)) === role && role !== "OTHER");
+}
 const formatTimestamp = (value: unknown) => new Intl.DateTimeFormat("en-PK", { timeZone: "Asia/Karachi", dateStyle: "medium", timeStyle: "short" }).format(new Date(text(value)));
 const activityFromRow = (r: Row): Activity => {
   const countsTowardKpi = r.counts_toward_kpi !== false;
@@ -67,6 +104,13 @@ const teamActivity = (current: (column: string) => ReturnType<typeof sql>) => sq
   select employee_id, team_id from media_activity where ${current("occurred_at")} and employee_id is not null and team_id is not null
 `;
 
+/** 19:00 on the month's first operational day, to 05:00 after its last. */
+function karachiMonthBoundary(date: string, edge: "start" | "end") {
+  const [year, month, day] = date.split("-").map(Number);
+  const base = Date.UTC(year, month - 1, day, edge === "start" ? 19 : 24 + 5) - 5 * 60 * 60 * 1000;
+  return new Date(base).toISOString();
+}
+
 function emptyData(period: PeriodKey, range: ReturnType<typeof resolveDateRange>): DashboardData {
   return { mode: "disconnected", timezone: "Asia/Karachi", period, range: serializedRange(range), generatedAt: new Date().toISOString(), metrics: [], divisions: [], teams: [], employees: [], activities: [], docks: [], targets: [], trend: [], health: { raw: 0, parsed: 0, unparsed: 0, errors: 0, unmatchedMessages: 0, unmappedEmployees: 0, unattributedDocks: 0, lastEventAt: null, newestMessageAt: null, lastSyncAt: null, channels: [] } };
 }
@@ -86,7 +130,9 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
   const {start,end,previousStart,previousEnd}=dashboardRange(range);
   const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
   const previous=(column:string)=>operationalShiftFilter(occurredAt(column),previousStart,previousEnd);
-  const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult, appointmentsByTeamResult] = await Promise.all([
+  const targetMonth=targetMonthFor(range.endDate);
+  const monthWindow=(column:string)=>operationalShiftFilter(occurredAt(column),karachiMonthBoundary(targetMonth.startDate,"start"),karachiMonthBoundary(targetMonth.endDate,"end"));
+  const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult, appointmentsByTeamResult, monthlyActualResult] = await Promise.all([
     db.execute(sql`select
       (select count(*) from appointments where ${current("occurred_at")})::int appointments,
       (select count(*) from appointments where ${previous("occurred_at")})::int appointments_prev,
@@ -149,6 +195,15 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
       from appointments a join teams t on t.id=a.team_id
       where ${current("a.occurred_at")} and a.employee_id is not null
       group by a.employee_id, t.name`),
+    // Monthly targets are judged on the whole calendar month, so their progress
+    // needs the month's own totals rather than the selected range's.
+    db.execute(sql`select employee_id, metric, sum(value)::numeric value from (
+      select employee_id, 'appointments' metric, count(*)::numeric value from appointments where ${monthWindow("occurred_at")} group by employee_id
+      union all select employee_id, 'revenue', coalesce(sum(amount),0) from sales where ${monthWindow("occurred_at")} group by employee_id
+      union all select employee_id, 'sales', count(*)::numeric from sales where ${monthWindow("occurred_at")} group by employee_id
+      union all select l.employee_id, 'leads', count(*)::numeric from leads l where ${monthWindow("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")} group by l.employee_id
+      union all select employee_id, 'work', count(*)::numeric from media_activity where ${monthWindow("occurred_at")} group by employee_id
+    ) m where employee_id is not null group by employee_id, metric`),
   ]);
   const summary = rows(summaryResult)[0] ?? {}; const outputs = rows(outputResult); const outputByEmployeeMetric = new Map(outputs.map((r) => [`${text(r.employee_id)}:${text(r.metric)}`, r])); const targetRows=rows(targetResult); const days=range.dayCount;
   const appointmentsByEmployeeTeam = new Map<string, Record<string, number>>();
@@ -158,7 +213,18 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
     entry[text(row.team)] = num(row.appointments);
     appointmentsByEmployeeTeam.set(key, entry);
   }
-  const people: Employee[] = rows(peopleResult).map((r) => { const metric=primaryMetricForTitle(text(r.job_title)); const output = outputByEmployeeMetric.get(`${text(r.id)}:${metric}`); const submittedOutput = metric === "leads" ? outputByEmployeeMetric.get(`${text(r.id)}:leads_submitted`) : undefined; const appointmentsOutput = outputByEmployeeMetric.get(`${text(r.id)}:appointments`); const current = num(output?.current_value); const previous = num(output?.previous_value); const label = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Work updates"; const teams=r.teams as string[]; const matchingTargets=targetRows.filter(t=>text(t.metric).toLowerCase()===metric); const configured=matchingTargets.find(t=>text(t.employee)===text(r.canonical_name))??matchingTargets.find(t=>!t.employee&&teams.includes(text(t.team))); const effective=configured?num(configured.value)*targetScale(configured.period,days):null; const completion=effective&&effective>0?Math.round(current/effective*100):null; return { id: text(r.id), name: text(r.canonical_name), initials: initials(text(r.canonical_name)), title: text(r.job_title), teams, activityTeams: (r.activity_teams ?? []) as string[], divisions: r.divisions as string[], aliases: r.aliases as string[], leadership: (r.leadership_level || undefined) as Employee["leadership"], rankingEnabled: Boolean(r.ranking_enabled), active: Boolean(r.active), status: statusFrom(completion), completion:completion??undefined, metricLabel: label, metricValue: metric === "revenue" ? money(current) : String(current), metricValueNumber: current, trend: delta(current, previous) ?? undefined, submittedLeads: submittedOutput ? num(submittedOutput.current_value) : undefined, excludedLeads: submittedOutput ? num(submittedOutput.current_value) - current : undefined, appointmentsBooked: num(appointmentsOutput?.current_value), appointmentsByTeam: appointmentsByEmployeeTeam.get(text(r.id)) ?? {} }; });
+  const monthlyActualByEmployee = new Map<string, number>();
+  for (const row of rows(monthlyActualResult)) monthlyActualByEmployee.set(`${text(row.employee_id)}:${text(row.metric)}`, num(row.value));
+  const people: Employee[] = rows(peopleResult).map((r) => { const metric=primaryMetricForTitle(text(r.job_title)); const output = outputByEmployeeMetric.get(`${text(r.id)}:${metric}`); const submittedOutput = metric === "leads" ? outputByEmployeeMetric.get(`${text(r.id)}:leads_submitted`) : undefined; const appointmentsOutput = outputByEmployeeMetric.get(`${text(r.id)}:appointments`); const current = num(output?.current_value); const previous = num(output?.previous_value); const label = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Work updates"; const teams=r.teams as string[]; const matchingTargets=targetRows.filter(t=>text(t.metric).toLowerCase()===metric); const configured=resolveTarget(matchingTargets,text(r.canonical_name),teams,text(r.job_title));
+    // A role can carry official targets whose input the data model does not
+    // record — an Appointment Setter's qualified calls and revenue milestones
+    // both have no source field. Those people are reported as unmeasured rather
+    // than as having no target at all.
+    const roleHasTarget=resolveTarget(targetRows,text(r.canonical_name),teams,text(r.job_title))!=null; const monthly=text(configured?.period)==="MONTHLY";const effective=configured?num(configured.value)*(monthly?1:targetScale(configured.period,days)):null; const progressValue=monthly?num(monthlyActualByEmployee.get(`${text(r.id)}:${metric}`)):current;let completion=effective&&effective>0?Math.round(progressValue/effective*100):null;
+    if(targetRoleForTitle(text(r.job_title))==="CLOSER"){
+      const composite=closerCompletion(targetRows,text(r.canonical_name),teams,text(r.job_title),num(monthlyActualByEmployee.get(`${text(r.id)}:revenue`)),num(monthlyActualByEmployee.get(`${text(r.id)}:sales`)));
+      if(composite!=null)completion=composite;
+    } return { id: text(r.id), name: text(r.canonical_name), initials: initials(text(r.canonical_name)), title: text(r.job_title), teams, activityTeams: (r.activity_teams ?? []) as string[], divisions: r.divisions as string[], aliases: r.aliases as string[], leadership: (r.leadership_level || undefined) as Employee["leadership"], rankingEnabled: Boolean(r.ranking_enabled), active: Boolean(r.active), status: statusFrom(completion, roleHasTarget), completion:completion??undefined, metricLabel: label, metricValue: metric === "revenue" ? money(current) : String(current), metricValueNumber: current, trend: delta(current, previous) ?? undefined, submittedLeads: submittedOutput ? num(submittedOutput.current_value) : undefined, excludedLeads: submittedOutput ? num(submittedOutput.current_value) - current : undefined, appointmentsBooked: num(appointmentsOutput?.current_value), appointmentsByTeam: appointmentsByEmployeeTeam.get(text(r.id)) ?? {} }; });
   const teamRows = rows(teamResult); const teamMetrics = teamRows.map((r) => { const kind = text(r.type); const metricName=kind === "CLOSER" ? "revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work" : "appointments"; const value = num(r[metricName]); const label = kind === "CLOSER" ? "reported revenue" : kind === "ISA" ? "leads" : kind === "OPERATIONAL" ? "work updates" : "appointments"; const target=targetRows.find(t=>!t.employee&&text(t.team)===text(r.name)&&text(t.metric).toLowerCase()===metricName); const effective=target?num(target.value)*targetScale(target.period,days):null; const progress=effective&&effective>0?Math.round(value/effective*100):null; return { id: text(r.id), division: text(r.division), name: text(r.name), role: kind, metric: kind === "CLOSER" ? money(value) : String(value), label, status: statusFrom(progress), progress, members: r.members as string[], memberCount: num(r.member_count) }; });
   const divisionNames = [...new Set(teamRows.map((r) => text(r.division)))];
   const activity: Activity[] = rows(activityResult).map(activityFromRow);
@@ -194,7 +260,80 @@ export async function getEmployeeDetail(employeeId: string, period: PeriodKey = 
     union all select ma.id,ma.employee_id,e.canonical_name,'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join employees e on e.id=ma.employee_id join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id where ma.employee_id=${employeeId} and ${current("ma.occurred_at")}
     union all select dk.id,dk.employee_id,e.canonical_name,'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join employees e on e.id=dk.employee_id join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id where dk.employee_id=${employeeId} and ${current("dk.occurred_at")}
   ) r order by occurred_at desc`);
-  return { employeeId, metricLabel, trend: rows(trendResult).map((r)=>({day:text(r.day),value:num(r.value)})), activities: rows(activitiesResult).map(activityFromRow) };
+
+  // Calls this employee has been assigned to conduct. The setter keeps ownership
+  // of the record; this is a read-only view of the assignment, joined through the
+  // Slack identity stored in appointments.assigned_person. Deliberately NOT
+  // scoped to the dashboard period, so operationally relevant calls stay visible
+  // whatever historical range the dashboard is showing.
+  const assignedCallsResult = await db.execute(sql`
+    select a.id, a.prospect_name, a.scheduled_text, a.scheduled_at, a.occurred_at, a.phone, a.state, a.original_timezone,
+      setter.canonical_name setter, t.name team, d.name division, c.name channel,
+      c.slack_channel_id, sm.slack_ts, sm.raw_text raw
+    from appointments a
+      join slack_messages sm on sm.id = a.slack_message_id
+      join employee_slack_identities si on si.workspace_id = sm.workspace_id and si.slack_user_id = a.assigned_person
+      join slack_channels c on c.id = sm.channel_id
+      left join employees setter on setter.id = a.employee_id
+      left join teams t on t.id = a.team_id
+      left join divisions d on d.id = t.division_id
+    where si.employee_id = ${employeeId}::uuid
+      and c.slack_channel_id in ('C098WNHNBR7', 'C0B0P6P7FPG')
+    order by coalesce(a.scheduled_at, a.occurred_at) desc
+    limit 500`);
+
+  // Monthly targets are measured over a whole calendar month, never scaled to the
+  // dashboard's selected range.
+  const month = targetMonthFor(range.endDate);
+  const monthWindow = (column: string) => operationalShiftFilter(
+    occurredAt(column),
+    karachiMonthBoundary(month.startDate, "start"),
+    karachiMonthBoundary(month.endDate, "end"),
+  );
+  const [monthlyResult] = rows(await db.execute(sql`select
+    (select coalesce(sum(amount),0)::numeric from sales where employee_id=${employeeId}::uuid and ${monthWindow("occurred_at")}) revenue,
+    (select count(*)::int from sales where employee_id=${employeeId}::uuid and ${monthWindow("occurred_at")}) closed_sales,
+    (select count(*)::int from appointments where employee_id=${employeeId}::uuid and ${monthWindow("occurred_at")}) appointments_booked,
+    (select count(*)::int from leads l where l.employee_id=${employeeId}::uuid and ${monthWindow("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) monthly_leads,
+    (select count(*)::int from leads l where ${monthWindow("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) monthly_team_leads,
+    (select count(*)::int from sales s join employees peer on peer.id = s.employee_id
+       where peer.job_title = ${text(employeeRow.job_title)}) role_sale_rows`));
+
+  return {
+    employeeId, metricLabel,
+    trend: rows(trendResult).map((r)=>({day:text(r.day),value:num(r.value)})),
+    activities: rows(activitiesResult).map(activityFromRow),
+    assignedCalls: rows(assignedCallsResult).map((r) => ({
+      id: text(r.id),
+      prospect: r.prospect_name ? text(r.prospect_name) : null,
+      scheduledText: r.scheduled_text ? text(r.scheduled_text) : null,
+      scheduledAt: r.scheduled_at ? new Date(String(r.scheduled_at)).toISOString() : null,
+      loggedAt: formatTimestamp(r.occurred_at),
+      setter: r.setter ? text(r.setter) : null,
+      assignedTo: text(employeeRow.canonical_name),
+      phone: r.phone ? text(r.phone) : null,
+      state: r.state ? text(r.state) : null,
+      timezone: r.original_timezone ? text(r.original_timezone) : null,
+      team: r.team ? text(r.team) : null,
+      division: r.division ? text(r.division) : null,
+      channel: text(r.channel),
+      sourceUrl: `https://slack.com/app_redirect?channel=${encodeURIComponent(text(r.slack_channel_id))}&message_ts=${encodeURIComponent(text(r.slack_ts))}`,
+      raw: text(r.raw),
+    })),
+    targetProgress: {
+      role: targetRoleForTitle(text(employeeRow.job_title)),
+      monthLabel: month.label, monthStart: month.startDate, monthEnd: month.endDate,
+      revenue: num(monthlyResult?.revenue),
+      closedSales: num(monthlyResult?.closed_sales),
+      // Appointments booked. Deliberately not reported as qualified calls:
+      // no qualified-call disposition exists upstream to read.
+      appointmentsBooked: num(monthlyResult?.appointments_booked),
+      qualifiedCallsTracked: false,
+      revenueAttributedToRole: num(monthlyResult?.role_sale_rows) > 0,
+      monthlyLeads: num(monthlyResult?.monthly_leads),
+      monthlyTeamLeads: num(monthlyResult?.monthly_team_leads),
+    },
+  };
 }
 
 export async function searchDashboardActivities(query: string, period: PeriodKey = "This Week", customStart?: string, customEnd?: string): Promise<Activity[]> {

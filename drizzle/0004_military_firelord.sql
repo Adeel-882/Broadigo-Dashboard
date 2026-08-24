@@ -1,0 +1,1 @@
+ALTER TABLE "appointments" ADD COLUMN "scheduled_text" text;

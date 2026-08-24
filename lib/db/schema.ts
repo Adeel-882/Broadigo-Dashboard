@@ -143,6 +143,9 @@ export const appointments = pgTable("appointments", {
   ...activityBase,
   prospectName: text("prospect_name"), phone: text("phone"), state: text("state"),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }), originalTimezone: text("original_timezone"), assignedPerson: text("assigned_person"),
+  /** The setter's own wording, e.g. "tomorrow 10:00 AM EST". Preserved even when
+   *  scheduledAt can be resolved so the UI can show the source phrasing. */
+  scheduledText: text("scheduled_text"),
 }, (table) => [uniqueIndex("appointments_slack_message_unique").on(table.slackMessageId), index("appointments_employee_time_idx").on(table.employeeId, table.occurredAt), index("appointments_team_time_idx").on(table.teamId, table.occurredAt)]);
 
 export const sales = pgTable("sales", {

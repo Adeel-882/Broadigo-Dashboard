@@ -1,5 +1,10 @@
 export type MetricKind = "appointments" | "sales" | "revenue" | "leads" | "work" | "docks";
-export type Status = "Ahead" | "On Track" | "At Risk" | "Behind" | "No Target";
+/**
+ * "No Target" means no target definition applies to this person. "Not Measured"
+ * means one does, but the data model captures no input for it — the two must stay
+ * distinct so an unmeasurable target is never read as an unset one.
+ */
+export type Status = "Ahead" | "On Track" | "At Risk" | "Behind" | "No Target" | "Not Measured";
 export type ViewKey = "overview" | "divisions" | "teams" | "employees" | "docks" | "targets" | "health" | "setup";
 export type PeriodKey = "Today" | "Yesterday" | "This Week" | "Last Week" | "This Month" | "Last Month" | "Custom Range";
 
@@ -41,7 +46,62 @@ export interface DockRecord { id: string; employeeId: string; employee: string; 
 export interface TargetRecord { id: string; team: string; role: string; metric: string; period: string; value: string; employee: string | null; effectiveFrom: string; effectiveTo: string | null; }
 export interface TrendPoint { day: string; value: number; }
 export interface ChannelHealth { id: string; name: string; slackChannelId: string; workspaceId: string; active: boolean; lastEventAt: string | null; }
-export interface EmployeeDetailData { employeeId: string; metricLabel: string; trend: TrendPoint[]; activities: Activity[]; }
+/** One appointment a setter booked and assigned to this employee to conduct. */
+export interface AssignedCall {
+  id: string;
+  prospect: string | null;
+  /** Free text exactly as the setter wrote it, e.g. "tomorrow 10:00 AM EST". */
+  scheduledText: string | null;
+  /** Canonical instant resolved from the Slack scheduling phrase when possible. */
+  scheduledAt: string | null;
+  /** When the appointment was reported in Slack. */
+  loggedAt: string;
+  setter: string | null;
+  assignedTo: string;
+  phone: string | null;
+  state: string | null;
+  timezone: string | null;
+  team: string | null;
+  division: string | null;
+  channel: string;
+  sourceUrl: string;
+  raw: string;
+}
+
+export interface TargetProgress {
+  role: "APPOINTMENT_SETTER" | "CLOSER" | "LEAD_GENERATOR" | "OTHER";
+  monthLabel: string;
+  monthStart: string;
+  monthEnd: string;
+  revenue: number;
+  closedSales: number;
+  /**
+   * Appointments this employee booked during the month. This is NOT a
+   * qualified-call count: nothing in the data model records whether a booked
+   * call was held or qualified, so the two must never be equated.
+   */
+  appointmentsBooked: number;
+  /** False while no qualified-call disposition is captured anywhere upstream. */
+  qualifiedCallsTracked: boolean;
+  /**
+   * Whether this employee's job title ever receives revenue attribution at all.
+   * Sales rows carry the closer's employee_id and nothing links a sale back to
+   * the appointment that produced it, so a setter's revenue is structurally zero
+   * rather than merely zero this month.
+   */
+  revenueAttributedToRole: boolean;
+  monthlyLeads: number;
+  monthlyTeamLeads: number;
+}
+
+export interface EmployeeDetailData {
+  employeeId: string;
+  metricLabel: string;
+  trend: TrendPoint[];
+  activities: Activity[];
+  assignedCalls?: AssignedCall[];
+  targetProgress?: TargetProgress;
+}
 
 export interface DashboardData {
   mode: "live" | "demo" | "disconnected";

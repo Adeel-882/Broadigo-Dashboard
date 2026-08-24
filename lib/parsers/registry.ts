@@ -1,5 +1,6 @@
 import type { ParseResult, ParserInput, SlackMessageParser } from "@/lib/parsers/types";
 import { extractFields, first, money, normalizeSlackText, slackLinkLabel } from "@/lib/parsers/types";
+import { parseScheduledCallAt } from "@/lib/parsers/scheduled-call-time";
 
 class AppointmentParser implements SlackMessageParser {
   constructor(public readonly key: string) {}
@@ -14,12 +15,19 @@ class AppointmentParser implements SlackMessageParser {
       ?? input.text.match(/\b(today|tomorrow|(?:mon|tues|wednes|thurs|fri|satur|sun)day(?:\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\w+)?)?)\b/i)?.[1]
       ?? null;
     const time = first(f, "time", "scheduled time", "appointment time")
-      ?? input.text.match(/\b(?:at|for)\s+(right\s+now|now|\d{1,2}(?::\d{2})\s*(?:am|pm)?(?:\s*(?:est|edt|cst|cdt|mst|mdt|pst|pdt))?)\b/i)?.[1]
+      ?? input.text.match(/\b(?:at|for)\s+(right\s+now|now|\d{1,2}(?::\d{2})?\s*(?:am|pm)?(?:\s*(?:est|edt|cst|cdt|mst|mdt|pst|pdt))?)\b/i)?.[1]
       ?? null;
+    const originalTimezone = first(f, "timezone", "time zone") ?? input.text.match(/\b(EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b/i)?.[1]?.toUpperCase() ?? null;
+    const assignedField = first(f, "assigned", "assigned person", "assigned to");
+    const assignedPerson = input.text.match(/assigned\s+to\s+<@([A-Z0-9]+)(?:\|[^>]+)?>/i)?.[1]
+      ?? assignedField?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/i)?.[1]
+      ?? assignedField
+      ?? null;
+    const scheduledAt = parseScheduledCallAt(date, time, originalTimezone, input.postedAt);
     const bookingPhrase = /\b(?:call|appointment)\s+(?:has\s+been\s+)?(?:scheduled|booked|set)\b/i.test(input.text);
     if (!phone || !bookingPhrase) return null;
     const warnings = [!prospect && "Prospect name missing", !date && "Scheduled date missing", !time && "Scheduled time missing"].filter(Boolean) as string[];
-    return { recordType: "APPOINTMENT", rawSourceId: input.rawSourceId, confidence: warnings.length ? 0.82 : 0.96, warnings, values: { prospectName: prospect || null, phone, state: first(f, "state") ?? input.text.match(/\bfrom\s*([A-Z]{2})\s+for\b/i)?.[1]?.toUpperCase() ?? null, scheduledText: [date, time].filter(Boolean).join(" ") || null, originalTimezone: first(f, "timezone", "time zone") ?? input.text.match(/\b(EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b/i)?.[1]?.toUpperCase() ?? null, assignedPerson: first(f, "assigned", "assigned person", "assigned to") ?? input.text.match(/assigned\s+to\s+<@([A-Z0-9]+)>/i)?.[1] ?? null } };
+    return { recordType: "APPOINTMENT", rawSourceId: input.rawSourceId, confidence: warnings.length ? 0.82 : 0.96, warnings, values: { prospectName: prospect || null, phone, state: first(f, "state") ?? input.text.match(/\bfrom\s*([A-Z]{2})\s+for\b/i)?.[1]?.toUpperCase() ?? null, scheduledText: [date, time].filter(Boolean).join(" ") || null, scheduledAt: scheduledAt?.toISOString() ?? null, originalTimezone, assignedPerson } };
   }
 }
 

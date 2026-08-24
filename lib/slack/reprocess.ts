@@ -171,7 +171,7 @@ async function reprocessChannel(transaction: Database, channel: Channel): Promis
 
       const base = { slackMessageId: message.id, employeeId: structuredEmployeeId, teamId: channel.teamId, occurredAt: message.postedAt, confidence: String(result.confidence) };
       const value = (key: string) => result.values[key] as string | null | undefined;
-      if (result.recordType === "APPOINTMENT") appointmentRows.push({ ...base, prospectName: value("prospectName"), phone: value("phone"), state: value("state"), originalTimezone: value("originalTimezone"), assignedPerson: value("assignedPerson") });
+      if (result.recordType === "APPOINTMENT") appointmentRows.push({ ...base, prospectName: value("prospectName"), phone: value("phone"), state: value("state"), scheduledAt: value("scheduledAt") ? new Date(value("scheduledAt")!) : null, originalTimezone: value("originalTimezone"), assignedPerson: value("assignedPerson"), scheduledText: value("scheduledText") });
       else if (result.recordType === "SALE") saleRows.push({ ...base, customerName: value("customerName"), phone: value("phone"), email: value("email"), packageName: value("packageName"), amount: result.values.amount == null ? null : String(result.values.amount), currency: value("currency") ?? "USD", state: value("state"), zipCodes: (result.values.zipCodes ?? []) as string[] });
       else if (result.recordType === "LEAD") {
         const eligibility = deriveLeadEligibility(message.reactions);
@@ -190,7 +190,7 @@ async function reprocessChannel(transaction: Database, channel: Channel): Promis
 
   if (appointmentRows.length) await transaction.insert(appointments).values(appointmentRows).onConflictDoUpdate({ target: appointments.slackMessageId, set: {
     employeeId: sql`excluded.employee_id`, teamId: sql`excluded.team_id`, occurredAt: sql`excluded.occurred_at`, confidence: sql`excluded.confidence`,
-    prospectName: sql`excluded.prospect_name`, phone: sql`excluded.phone`, state: sql`excluded.state`, originalTimezone: sql`excluded.original_timezone`, assignedPerson: sql`excluded.assigned_person`,
+    prospectName: sql`excluded.prospect_name`, phone: sql`excluded.phone`, state: sql`excluded.state`, scheduledAt: sql`excluded.scheduled_at`, originalTimezone: sql`excluded.original_timezone`, assignedPerson: sql`excluded.assigned_person`, scheduledText: sql`excluded.scheduled_text`,
   } });
   if (saleRows.length) await transaction.insert(sales).values(saleRows).onConflictDoUpdate({ target: sales.slackMessageId, set: {
     employeeId: sql`excluded.employee_id`, teamId: sql`excluded.team_id`, occurredAt: sql`excluded.occurred_at`, confidence: sql`excluded.confidence`,

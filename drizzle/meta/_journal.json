@@ -29,6 +29,13 @@
       "when": 1787345762955,
       "tag": "0003_classy_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787592807867,
+      "tag": "0004_military_firelord",
+      "breakpoints": true
     }
   ]
 }

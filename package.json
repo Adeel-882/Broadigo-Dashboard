@@ -25,7 +25,8 @@
     "leads:reconcile": "tsx scripts/reconcile-isa-leads.ts",
     "leads:audit-reactions": "tsx scripts/audit-lead-reactions.ts",
     "leads:backfill-reactions": "tsx scripts/backfill-lead-reactions.ts",
-    "slack:probe": "tsx scripts/probe-slack-ingestion.ts"
+    "slack:probe": "tsx scripts/probe-slack-ingestion.ts",
+    "targets:seed": "tsx scripts/seed-performance-targets.ts"
   },
   "dependencies": {
     "@next/env": "latest",
