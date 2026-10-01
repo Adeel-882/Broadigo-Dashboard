@@ -171,16 +171,16 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
       union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
       union all select l.id,l.employee_id,coalesce(e.canonical_name,'Unmapped'),'Lead',coalesce(l.contact_name,'Lead reported'),coalesce(l.lead_type,''),c.name,l.occurred_at,sm.raw_text,l.counts_toward_kpi,l.exclusion_reasons from leads l join slack_messages sm on sm.id=l.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=l.employee_id where ${current("l.occurred_at")}
       union all select ma.id,ma.employee_id,coalesce(e.canonical_name,'Unmapped'),'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=ma.employee_id where ${current("ma.occurred_at")}
-      union all select dk.id,dk.employee_id,coalesce(e.canonical_name,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=dk.employee_id where ${current("dk.occurred_at")}
+      union all select dk.id,dk.employee_id,coalesce(e.canonical_name,dr.employee,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=dk.employee_id left join lateral (select string_agg(distinct recipient.canonical_name, ', ' order by recipient.canonical_name) employee from regexp_matches(sm.raw_text,'<@([A-Z0-9]+)>','g') mention(match) join employee_slack_identities rsi on rsi.workspace_id=sm.workspace_id and rsi.slack_user_id=(mention.match)[1] join employees recipient on recipient.id=rsi.employee_id) dr on true where ${current("dk.occurred_at")}
     ) r order by occurred_at desc limit 100`),
-    db.execute(sql`select dk.id, dk.employee_id, coalesce(e.canonical_name,'Unmapped') employee, to_char(${operationalDateSql(occurredAt("dk.occurred_at"))},'YYYY-MM-DD') date, dk.occurred_at, dk.amount, dk.currency, dk.reason, coalesce(dk.applied_by,'—') applied_by, c.name channel, sm.raw_text raw from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=dk.employee_id where ${current("dk.occurred_at")} order by dk.occurred_at desc`),
+    db.execute(sql`select dk.id, dk.employee_id, coalesce(e.canonical_name,dr.employee,'Unmapped') employee, to_char(${operationalDateSql(occurredAt("dk.occurred_at"))},'YYYY-MM-DD') date, dk.occurred_at, dk.amount, dk.currency, dk.reason, coalesce(dk.applied_by,'—') applied_by, c.name channel, sm.raw_text raw from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=dk.employee_id left join lateral (select string_agg(distinct recipient.canonical_name, ', ' order by recipient.canonical_name) employee from regexp_matches(sm.raw_text,'<@([A-Z0-9]+)>','g') mention(match) join employee_slack_identities rsi on rsi.workspace_id=sm.workspace_id and rsi.slack_user_id=(mention.match)[1] join employees recipient on recipient.id=rsi.employee_id) dr on true where ${current("dk.occurred_at")} order by dk.occurred_at desc`),
     db.execute(sql`select
       count(*)::int raw,
       count(*) filter(where parser_status='PARSED')::int parsed, count(*) filter(where parser_status='UNPARSED')::int unparsed, count(*) filter(where parser_status='ERROR')::int errors,
       count(*) filter(where employee_id is null and slack_user_id is not null)::int unmatched_messages,
       count(distinct slack_user_id) filter(where employee_id is null and slack_user_id is not null)::int unmapped,
       max(imported_at) last_event_at, max(posted_at) newest_message_at,
-      (select count(*) from docks where employee_id is null)::int unattributed_docks,
+      (select count(*) from docks dk join slack_messages dsm on dsm.id=dk.slack_message_id where dk.employee_id is null and not exists (select 1 from employee_slack_identities dsi where dsi.workspace_id=dsm.workspace_id and dsm.raw_text like '%<@'||dsi.slack_user_id||'>%'))::int unattributed_docks,
       (select max(completed_at) from sync_runs where status='COMPLETED') last_sync_at from slack_messages`),
     db.execute(sql`select c.id,c.name,c.slack_channel_id,c.workspace_id,c.active,max(sm.imported_at) last_event_at from slack_channels c left join slack_messages sm on sm.channel_id=c.id group by c.id order by c.name`),
     db.execute(sql`select a.employee_id, t.name team, count(*)::int appointments
@@ -222,7 +222,7 @@ export async function getEmployeeDetail(employeeId: string, period: PeriodKey = 
   if (!db) return { employeeId, metricLabel: "Activity", trend: [], activities: [] };
   const {start,end}=dashboardRange(range);
   const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
-  const employeeResult = await db.execute(sql`select job_title from employees where id=${employeeId} limit 1`);
+  const employeeResult = await db.execute(sql`select canonical_name, job_title from employees where id=${employeeId} limit 1`);
   const employeeRow = rows(employeeResult)[0];
   if (!employeeRow) throw new Error("Employee not found.");
   const metric = primaryMetricForTitle(text(employeeRow.job_title));
@@ -239,14 +239,14 @@ export async function getEmployeeDetail(employeeId: string, period: PeriodKey = 
     union all select s.id,s.employee_id,e.canonical_name,'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join employees e on e.id=s.employee_id join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id where s.employee_id=${employeeId} and ${current("s.occurred_at")}
     union all select l.id,l.employee_id,e.canonical_name,'Lead',coalesce(l.contact_name,'Lead reported'),coalesce(l.lead_type,''),c.name,l.occurred_at,sm.raw_text,l.counts_toward_kpi,l.exclusion_reasons from leads l join employees e on e.id=l.employee_id join slack_messages sm on sm.id=l.slack_message_id join slack_channels c on c.id=sm.channel_id where l.employee_id=${employeeId} and ${current("l.occurred_at")}
     union all select ma.id,ma.employee_id,e.canonical_name,'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join employees e on e.id=ma.employee_id join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id where ma.employee_id=${employeeId} and ${current("ma.occurred_at")}
-    union all select dk.id,dk.employee_id,e.canonical_name,'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join employees e on e.id=dk.employee_id join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id where dk.employee_id=${employeeId} and ${current("dk.occurred_at")}
+    union all select dk.id,${employeeId}::uuid,${text(employeeRow.canonical_name)},'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id where ${current("dk.occurred_at")} and (dk.employee_id=${employeeId}::uuid or exists (select 1 from employee_slack_identities dsi where dsi.employee_id=${employeeId}::uuid and dsi.workspace_id=sm.workspace_id and sm.raw_text like '%<@'||dsi.slack_user_id||'>%'))
   ) r order by occurred_at desc`);
 
   // Calls this employee has been assigned to conduct. The setter keeps ownership
   // of the record; this is a read-only view of the assignment, joined through the
-  // Slack identity stored in appointments.assigned_person. Deliberately NOT
-  // scoped to the dashboard period, so operationally relevant calls stay visible
-  // whatever historical range the dashboard is showing.
+  // Slack identity stored in appointments.assigned_person. It uses the same
+  // operational period as the employee KPI, so the tab count and records always
+  // agree with the active Today/Week/Month/custom filter.
   const assignedCallsResult = await db.execute(sql`
     select a.id, a.prospect_name, a.scheduled_text, a.scheduled_at, a.occurred_at, a.phone, a.state, a.original_timezone,
       setter.canonical_name setter, t.name team, d.name division, c.name channel,
@@ -260,6 +260,7 @@ export async function getEmployeeDetail(employeeId: string, period: PeriodKey = 
       left join divisions d on d.id = t.division_id
     where si.employee_id = ${employeeId}::uuid
       and c.slack_channel_id in ('C098WNHNBR7', 'C0B0P6P7FPG')
+      and ${current("a.occurred_at")}
     order by coalesce(a.scheduled_at, a.occurred_at) desc
     limit 500`);
 
@@ -319,7 +320,7 @@ export async function searchDashboardActivities(query: string, period: PeriodKey
     union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat_ws(' · ',s.currency||' '||s.amount,s.package_name,s.state,array_to_string(s.zip_codes,',')),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
     union all select l.id,l.employee_id,coalesce(e.canonical_name,'Unmapped'),'Lead',coalesce(l.contact_name,'Lead reported'),concat_ws(' · ',l.lead_type,l.state,l.phone,l.email,l.property_type,l.timeline,l.details::text),c.name,l.occurred_at,sm.raw_text,l.counts_toward_kpi,l.exclusion_reasons from leads l join slack_messages sm on sm.id=l.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=l.employee_id where ${current("l.occurred_at")}
     union all select ma.id,ma.employee_id,coalesce(e.canonical_name,'Unmapped'),'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=ma.employee_id where ${current("ma.occurred_at")}
-    union all select dk.id,dk.employee_id,coalesce(e.canonical_name,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=dk.employee_id where ${current("dk.occurred_at")}
+    union all select dk.id,dk.employee_id,coalesce(e.canonical_name,dr.employee,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=dk.employee_id left join lateral (select string_agg(distinct recipient.canonical_name, ', ' order by recipient.canonical_name) employee from regexp_matches(sm.raw_text,'<@([A-Z0-9]+)>','g') mention(match) join employee_slack_identities rsi on rsi.workspace_id=sm.workspace_id and rsi.slack_user_id=(mention.match)[1] join employees recipient on recipient.id=rsi.employee_id) dr on true where ${current("dk.occurred_at")}
   ) r where concat_ws(' ',employee,summary,detail,channel,raw) ilike ${pattern} order by occurred_at desc limit 20`);
   return rows(result).map(activityFromRow);
 }

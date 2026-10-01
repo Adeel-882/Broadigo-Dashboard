@@ -101,15 +101,14 @@ const moneyShort = (value: number) => new Intl.NumberFormat("en-US", { style: "c
  * Read-only. The setter keeps full credit for the appointment; nothing here
  * counts toward this employee's appointments, sales or revenue.
  *
- * Scope is deliberately independent of the dashboard's date filter so a
- * historical reporting range can never hide an operationally relevant call.
- * Only fields the appointment record actually stores are shown.
+ * Scope follows the dashboard's operational date filter, exactly like the
+ * employee's other metrics and evidence. Only fields the appointment record
+ * actually stores are shown.
  */
 function CallsScheduled({ calls, loading }: { calls: AssignedCall[]; loading: boolean }) {
   const [scope, setScope] = useState<"recent" | "all">("recent");
-  // Calls arrive newest first, so "Recent" caps the list rather than filtering on
-  // the wall clock. That keeps rendering pure and the panel bounded, and it never
-  // hides an operationally relevant call the way a date window would.
+  // Calls already belong to the active dashboard period and arrive newest first;
+  // "Recent" only caps a long selected-period list for quicker scanning.
   const RECENT_LIMIT = 25;
   const visible = scope === "all" ? calls : calls.slice(0, RECENT_LIMIT);
 
@@ -119,7 +118,7 @@ function CallsScheduled({ calls, loading }: { calls: AssignedCall[]; loading: bo
     <div className="profile-section-title"><div><p className="eyebrow">Assigned to this employee</p><h3>Calls scheduled</h3></div><PhoneCall size={17}/></div>
     <div className="calls-scope" role="group" aria-label="Call scope">
       <button className={scope === "recent" ? "active" : ""} onClick={() => setScope("recent")}>Recent</button>
-      <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>All{calls.length ? ` (${calls.length})` : ""}</button>
+      <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>Selected period{calls.length ? ` (${calls.length})` : ""}</button>
     </div>
     {visible.length ? <div className="calls-list">{visible.map((call) => <article key={call.id}>
       <header>
