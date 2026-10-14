@@ -132,6 +132,8 @@ export interface Activity {
   channel: string;
   timestamp: string;
   raw: string;
+  /** Exact Slack source for evidence-backed records when available. */
+  sourceUrl?: string;
   /** Leads only: whether this record counts toward Lead Management KPIs. */
   countsTowardKpi?: boolean;
   exclusionLabel?: string;

@@ -105,10 +105,11 @@ class DockParser implements SlackMessageParser {
     const amount = parseDockAmount(first(f, "amount", "dock amount", "fine") ?? inlineAmount);
     if (amount === null || !/\b(?:dock|deduction|penalty|fine)\b/i.test(input.text)) return null;
     const explicitReason = first(f, "reason")
-      ?? input.text.match(/\b(?:for|due\s+to|because\s+of)\s+(.+?)(?=\s*<@[A-Z0-9]+>|\s*$)/is)?.[1]?.trim()
+      ?? input.text.match(/\b(?:for|due\s+to|because\s+of)\s+(.+?)(?=\s*<@[A-Z0-9]+(?:\|[^>]+)?>|\s*$)/is)?.[1]?.trim()
+      ?? input.text.match(/<@[A-Z0-9]+(?:\|[^>]+)?>(?![\s\S]*<@)\s+(?:for\s+)?(.+?)\s*$/is)?.[1]?.trim()
       ?? null;
     const warnings = explicitReason ? [] : ["Dock reason not specified in source message"];
-    return { recordType: "DOCK", rawSourceId: input.rawSourceId, confidence: explicitReason ? 0.96 : 0.84, warnings, values: { amount, currency: first(f, "currency") ?? (input.text.includes("$") || /\bUSD\b/i.test(input.text) ? "USD" : "PKR"), reason: explicitReason ?? "Not specified in source message", appliedBy: first(f, "applied by", "reported by"), notes: first(f, "notes"), targetSlackUserIds: [...input.text.matchAll(/<@([A-Z0-9]+)>/g)].map((match) => match[1]) } };
+    return { recordType: "DOCK", rawSourceId: input.rawSourceId, confidence: explicitReason ? 0.96 : 0.84, warnings, values: { amount, currency: first(f, "currency") ?? (input.text.includes("$") || /\bUSD\b/i.test(input.text) ? "USD" : "PKR"), reason: explicitReason ?? "Not specified in source message", appliedBy: first(f, "applied by", "reported by"), notes: first(f, "notes"), targetSlackUserIds: [...input.text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]+)?>/g)].map((match) => match[1]) } };
   }
 }
 

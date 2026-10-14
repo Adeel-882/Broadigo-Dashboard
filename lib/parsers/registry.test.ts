@@ -184,6 +184,16 @@ describe("Slack parser registry", () => {
     expect(result?.values.amount).toBe(expected);
   });
 
+  it("keeps pipe-form Slack targets exact and parses the trailing reason", () => {
+    const result = parserRegistry.parse("dock", input("A dock of PKR 2k is applied to\n<@JORDAN|Jordan Jones>\n<@LENA|Lena Cross>\nfor late post-break arrival."));
+    expect(result?.values).toMatchObject({ amount: 2000, targetSlackUserIds: ["JORDAN", "LENA"], reason: "late post-break arrival." });
+  });
+
+  it("returns only the two explicit targets for a multi-person dock", () => {
+    const result = parserRegistry.parse("dock", input("A dock of PKR 2000 has been applied to\n<@LARS|Lars White>\n<@HARVEY|Harvey Benjamin>"));
+    expect(result?.values.targetSlackUserIds).toEqual(["LARS", "HARVEY"]);
+  });
+
   it("is conservative with casual media messages", () => {
     expect(parserRegistry.parse("media-work", input("Morning everyone, hope you're well!"))).toBeNull();
     expect(parserRegistry.parse("media-work", input("Completed the client analytics automation and shipped the handoff."))?.values.classification).toBe("WORK_COMPLETED");

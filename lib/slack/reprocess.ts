@@ -4,6 +4,7 @@ import {
   appointments,
   dockRecipients,
   docks,
+  employees,
   leads,
   mediaActivities,
   sales,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { parserRegistry } from "@/lib/parsers/registry";
 import { resolveStructuredAttribution } from "@/lib/slack/attribution";
+import { dockAuthorLabel } from "@/lib/slack/dock-author";
 import { deriveLeadEligibility } from "@/lib/slack/reactions";
 
 type Channel = typeof slackChannels.$inferSelect;
@@ -146,6 +148,8 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
   const messages = await transaction.select().from(slackMessages).where(sourceFilter);
   const identities = await transaction.select().from(slackIdentities).where(eq(slackIdentities.workspaceId, channel.workspaceId));
   const identityBySlackUser = new Map(identities.map((identity) => [identity.slackUserId, identity.employeeId]));
+  const dockPeople = channel.parserType === "dock" ? await transaction.select({ id: employees.id, name: employees.canonicalName, pseudo: employees.pseudoName }).from(employees) : [];
+  const dockPeopleById = new Map(dockPeople.map((person) => [person.id, person]));
   const attributionUpdated = messages.filter((message) => before.find((old) => old.id === message.id)?.employeeId !== message.employeeId).length;
   const messageIds = messages.map((message) => message.id);
   const existingStructuredIds = new Set<string>();
@@ -200,7 +204,9 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
         leadRows.push({ ...base, leadType: value("leadType"), contactName: value("contactName"), phone: value("phone"), email: value("email"), propertyType: value("propertyType"), state: value("state"), timeline: value("timeline"), details: (result.values.details ?? {}) as Record<string, string>, countsTowardKpi: eligibility.countsTowardKpi, exclusionReasons: eligibility.exclusionReasons });
       }
       else if (result.recordType === "DOCK" && result.values.amount != null && value("reason")) {
-        dockRows.push({ ...base, amount: String(result.values.amount), currency: value("currency") ?? "PKR", reason: value("reason")!, appliedBy: value("appliedBy"), notes: value("notes") });
+        const authorIdentity = identities.find((identity) => identity.slackUserId === message.slackUserId);
+        const author = authorIdentity ? dockPeopleById.get(authorIdentity.employeeId) : undefined;
+        dockRows.push({ ...base, amount: String(result.values.amount), currency: value("currency") ?? "PKR", reason: value("reason")!, appliedBy: dockAuthorLabel(author?.name, author?.pseudo, authorIdentity?.displayName) ?? value("appliedBy"), notes: value("notes") });
         dockRecipientIds.set(message.id, attribution.employeeIds);
       }
       else if (result.recordType === "MEDIA_ACTIVITY") mediaRows.push({ ...base, classification: value("classification")!, summary: value("summary")!, blocker: value("blocker") });

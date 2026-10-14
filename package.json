@@ -29,7 +29,8 @@
     "targets:seed": "tsx scripts/seed-performance-targets.ts",
     "appointments:backfill-qualifications": "tsx scripts/backfill-appointment-qualifications.ts",
     "isa:update-roster": "tsx scripts/update-isa-roster.ts",
-    "docks:backfill": "tsx scripts/backfill-dock-recipients.ts"
+    "docks:backfill": "tsx scripts/backfill-dock-recipients.ts",
+    "docks:reconcile": "tsx scripts/reconcile-docks.ts"
   },
   "dependencies": {
     "@next/env": "latest",
