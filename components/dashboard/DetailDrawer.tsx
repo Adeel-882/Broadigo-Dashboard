@@ -46,7 +46,7 @@ function EmployeeDetail({ employee, detail, loading, openActivity }: { employee:
   const showCalls=/closer/i.test(employee.title)||assignedCalls.length>0;
   // Keyed by employee.id at the call site, so this resets naturally per person.
   const [tab,setTab]=useState<"overview"|"calls">("overview");
-  return <div className="drawer-content employee-profile"><div className="profile-hero"><span className="profile-avatar">{employee.initials}</span><div><p className="eyebrow">Employee intelligence</p><h2>{employee.name}</h2><p>{employee.title}</p></div>{employee.leadership && <span className="leadership-badge">{employee.leadership}</span>}</div><div className="profile-chips">{employee.teams.map((team) => <span key={team}>{team}</span>)}</div>
+  return <div className="drawer-content employee-profile"><div className="profile-hero"><span className="profile-avatar">{employee.initials}</span><div><p className="eyebrow">Employee intelligence</p><h2>{employee.name}</h2>{employee.pseudoName&&<p>{employee.pseudoName}</p>}<p>{employee.title}</p>{employee.workEmail&&<p>{employee.workEmail}</p>}</div>{employee.leadership && <span className="leadership-badge">{employee.leadership}</span>}</div><div className="profile-chips">{employee.teams.map((team) => <span key={team}>{team}</span>)}</div>
     {showCalls&&<div className="drawer-tabs" role="tablist" aria-label="Employee sections">
       <button role="tab" aria-selected={tab==="overview"} className={tab==="overview"?"active":""} onClick={()=>setTab("overview")}>Overview</button>
       <button role="tab" aria-selected={tab==="calls"} className={tab==="calls"?"active":""} onClick={()=>setTab("calls")}>Calls Scheduled{assignedCalls.length?<em>{assignedCalls.length}</em>:null}</button>

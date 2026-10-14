@@ -7,11 +7,10 @@ const identities = new Map([
 ]);
 
 describe("structured Slack attribution", () => {
-  it("attributes the Mark Smith posted dock to mentioned target Hamdan Mahmood", () => {
-    const result = resolveStructuredAttribution("DOCK", "employee-mark-smith", {
-      targetSlackUserIds: ["U_HAMDAN"],
-    }, identities);
-    expect(result).toEqual({ employeeId: "employee-hamdan-mahmood", warnings: [] });
+  it("attributes the posted dock to its mentioned target", () => {
+    expect(resolveStructuredAttribution("DOCK", "employee-mark-smith", { targetSlackUserIds: ["U_HAMDAN"] }, identities)).toEqual({
+      employeeId: "employee-hamdan-mahmood", employeeIds: ["employee-hamdan-mahmood"], warnings: [],
+    });
   });
 
   it("never falls back to the posting author for docks without one mapped target", () => {
@@ -21,12 +20,18 @@ describe("structured Slack attribution", () => {
   });
 
   it("attributes a dock when exactly one mentioned profile is mapped", () => {
-    expect(resolveStructuredAttribution("DOCK", "employee-mark-smith", {
-      targetSlackUserIds: ["U_HAMDAN", "U_UNKNOWN"],
-    }, identities)).toEqual({ employeeId: "employee-hamdan-mahmood", warnings: [] });
+    expect(resolveStructuredAttribution("DOCK", "employee-mark-smith", { targetSlackUserIds: ["U_HAMDAN", "U_UNKNOWN"] }, identities)).toEqual({
+      employeeId: "employee-hamdan-mahmood", employeeIds: ["employee-hamdan-mahmood"], warnings: [],
+    });
+  });
+
+  it("keeps every distinct mapped dock recipient", () => {
+    const result = resolveStructuredAttribution("DOCK", null, { targetSlackUserIds: ["U_MARK", "U_MARK", "U_HAMDAN"] }, identities);
+    expect(result.employeeId).toBeNull();
+    expect(result.employeeIds).toEqual(["employee-mark-smith", "employee-hamdan-mahmood"]);
   });
 
   it("keeps author attribution for non-dock records", () => {
-    expect(resolveStructuredAttribution("APPOINTMENT", "employee-mark-smith", {}, identities).employeeId).toBe("employee-mark-smith");
+    expect(resolveStructuredAttribution("APPOINTMENT", "employee-mark-smith", {}, identities)).toMatchObject({ employeeId: "employee-mark-smith", employeeIds: ["employee-mark-smith"] });
   });
 });

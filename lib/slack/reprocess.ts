@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   appointments,
+  dockRecipients,
   docks,
   leads,
   mediaActivities,
@@ -132,10 +133,14 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
     : eq(slackMessages.channelId, channel.id);
   const before = await transaction.select({ id: slackMessages.id, employeeId: slackMessages.employeeId }).from(slackMessages).where(sourceFilter);
 
-  await transaction.update(slackMessages).set({ employeeId: null, parserType: channel.parserType }).where(sourceFilter);
+  // Parser reprocessing must not reinterpret historical ownership after a
+  // Slack account changes hands. Keep persisted attribution and only fill
+  // messages that never had an employee mapping.
+  await transaction.update(slackMessages).set({ parserType: channel.parserType }).where(sourceFilter);
   await transaction.execute(sql`update slack_messages sm set employee_id=si.employee_id
     from employee_slack_identities si
     where sm.channel_id=${channel.id} ${onlySlackTs ? sql`and sm.slack_ts=${onlySlackTs}` : sql``}
+      and sm.employee_id is null
       and si.workspace_id=sm.workspace_id and si.slack_user_id=sm.slack_user_id`);
 
   const messages = await transaction.select().from(slackMessages).where(sourceFilter);
@@ -159,6 +164,7 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
   const saleRows: Array<typeof sales.$inferInsert> = [];
   const leadRows: Array<typeof leads.$inferInsert> = [];
   const dockRows: Array<typeof docks.$inferInsert> = [];
+  const dockRecipientIds = new Map<string, string[]>();
   const mediaRows: Array<typeof mediaActivities.$inferInsert> = [];
   const parsedGroups = new Map<string, string[]>();
   const unparsedIds: string[] = [];
@@ -193,7 +199,10 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
         const eligibility = deriveLeadEligibility(message.reactions);
         leadRows.push({ ...base, leadType: value("leadType"), contactName: value("contactName"), phone: value("phone"), email: value("email"), propertyType: value("propertyType"), state: value("state"), timeline: value("timeline"), details: (result.values.details ?? {}) as Record<string, string>, countsTowardKpi: eligibility.countsTowardKpi, exclusionReasons: eligibility.exclusionReasons });
       }
-      else if (result.recordType === "DOCK" && result.values.amount != null && value("reason")) dockRows.push({ ...base, amount: String(result.values.amount), currency: value("currency") ?? "PKR", reason: value("reason")!, appliedBy: value("appliedBy"), notes: value("notes") });
+      else if (result.recordType === "DOCK" && result.values.amount != null && value("reason")) {
+        dockRows.push({ ...base, amount: String(result.values.amount), currency: value("currency") ?? "PKR", reason: value("reason")!, appliedBy: value("appliedBy"), notes: value("notes") });
+        dockRecipientIds.set(message.id, attribution.employeeIds);
+      }
       else if (result.recordType === "MEDIA_ACTIVITY") mediaRows.push({ ...base, classification: value("classification")!, summary: value("summary")!, blocker: value("blocker") });
       else { failedIds.push(message.id); continue; }
 
@@ -217,10 +226,20 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
     leadType: sql`excluded.lead_type`, contactName: sql`excluded.contact_name`, phone: sql`excluded.phone`, email: sql`excluded.email`, propertyType: sql`excluded.property_type`, state: sql`excluded.state`, timeline: sql`excluded.timeline`, details: sql`excluded.details`,
     countsTowardKpi: sql`excluded.counts_toward_kpi`, exclusionReasons: sql`excluded.exclusion_reasons`,
   } });
-  if (dockRows.length) await transaction.insert(docks).values(dockRows).onConflictDoUpdate({ target: docks.slackMessageId, set: {
-    employeeId: sql`excluded.employee_id`, teamId: sql`excluded.team_id`, occurredAt: sql`excluded.occurred_at`, confidence: sql`excluded.confidence`,
-    amount: sql`excluded.amount`, currency: sql`excluded.currency`, reason: sql`excluded.reason`, appliedBy: sql`excluded.applied_by`, notes: sql`excluded.notes`,
-  } });
+  if (dockRows.length) {
+    await transaction.insert(docks).values(dockRows).onConflictDoUpdate({ target: docks.slackMessageId, set: {
+      employeeId: sql`excluded.employee_id`, teamId: sql`excluded.team_id`, occurredAt: sql`excluded.occurred_at`, confidence: sql`excluded.confidence`,
+      amount: sql`excluded.amount`, currency: sql`excluded.currency`, reason: sql`excluded.reason`, appliedBy: sql`excluded.applied_by`, notes: sql`excluded.notes`,
+    } });
+    const dockRecords = await transaction.select({ id: docks.id, slackMessageId: docks.slackMessageId }).from(docks).where(inArray(docks.slackMessageId, [...dockRecipientIds.keys()]));
+    for (const dock of dockRecords) {
+      const existingRecipients = await transaction.select({ id: dockRecipients.id }).from(dockRecipients).where(eq(dockRecipients.dockId, dock.id)).limit(1);
+      if (!onlySlackTs && existingRecipients.length) continue;
+      await transaction.delete(dockRecipients).where(eq(dockRecipients.dockId, dock.id));
+      const employeeIds = dockRecipientIds.get(dock.slackMessageId) ?? [];
+      if (employeeIds.length) await transaction.insert(dockRecipients).values(employeeIds.map((employeeId) => ({ dockId: dock.id, employeeId }))).onConflictDoNothing();
+    }
+  }
   if (mediaRows.length) await transaction.insert(mediaActivities).values(mediaRows).onConflictDoUpdate({ target: mediaActivities.slackMessageId, set: {
     employeeId: sql`excluded.employee_id`, teamId: sql`excluded.team_id`, occurredAt: sql`excluded.occurred_at`, confidence: sql`excluded.confidence`,
     classification: sql`excluded.classification`, summary: sql`excluded.summary`, blocker: sql`excluded.blocker`,

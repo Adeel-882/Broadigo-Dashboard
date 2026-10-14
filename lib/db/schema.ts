@@ -26,6 +26,8 @@ export const employees = pgTable("employees", {
   jobTitle: text("job_title").notNull(),
   leadershipLevel: text("leadership_level"),
   avatarUrl: text("avatar_url"),
+  pseudoName: text("pseudo_name"),
+  workEmail: text("work_email"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("employees_name_idx").on(table.canonicalName), index("employees_active_idx").on(table.active)]);
@@ -186,6 +188,17 @@ export const docks = pgTable("docks", {
   ...activityBase,
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(), currency: text("currency").notNull().default("PKR"), reason: text("reason").notNull(), appliedBy: text("applied_by"), notes: text("notes"),
 }, (table) => [uniqueIndex("docks_slack_message_unique").on(table.slackMessageId), index("docks_employee_time_idx").on(table.employeeId, table.occurredAt), index("docks_team_time_idx").on(table.teamId, table.occurredAt)]);
+
+/** One row per distinct affected employee. The parent dock amount remains the
+ * per-person amount; aggregate impact is the sum across these recipients. */
+export const dockRecipients = pgTable("dock_recipients", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  dockId: uuid("dock_id").notNull().references(() => docks.id, { onDelete: "cascade" }),
+  employeeId: uuid("employee_id").notNull().references(() => employees.id),
+}, (table) => [
+  uniqueIndex("dock_recipient_unique").on(table.dockId, table.employeeId),
+  index("dock_recipient_employee_idx").on(table.employeeId),
+]);
 
 export const mediaActivities = pgTable("media_activity", {
   ...activityBase,

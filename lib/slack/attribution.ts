@@ -4,6 +4,7 @@ type IdentityLookup = ReadonlyMap<string, string>;
 
 export type StructuredAttribution = {
   employeeId: string | null;
+  employeeIds: string[];
   warnings: string[];
 };
 
@@ -13,7 +14,7 @@ export function resolveStructuredAttribution(
   values: ParseResult["values"],
   identityBySlackUser: IdentityLookup,
 ): StructuredAttribution {
-  if (recordType !== "DOCK") return { employeeId: authorEmployeeId ?? null, warnings: [] };
+  if (recordType !== "DOCK") return { employeeId: authorEmployeeId ?? null, employeeIds: authorEmployeeId ? [authorEmployeeId] : [], warnings: [] };
 
   const targetSlackUserIds = [...new Set((values.targetSlackUserIds as string[] | undefined) ?? [])];
   const targetEmployeeIds = [...new Set(targetSlackUserIds
@@ -22,6 +23,7 @@ export function resolveStructuredAttribution(
   if (targetEmployeeIds.length !== 1) {
     return {
       employeeId: null,
+      employeeIds: targetEmployeeIds,
       warnings: [targetEmployeeIds.length > 1
         ? "Multiple mapped dock targets found; employee attribution left unassigned"
         : targetSlackUserIds.length
@@ -30,5 +32,5 @@ export function resolveStructuredAttribution(
     };
   }
 
-  return { employeeId: targetEmployeeIds[0], warnings: [] };
+  return { employeeId: targetEmployeeIds[0], employeeIds: targetEmployeeIds, warnings: [] };
 }

@@ -176,6 +176,14 @@ describe("Slack parser registry", () => {
     expect(result?.values.amount).toBe(amount);
   });
 
+  it.each([
+    ["2k", 2000], ["2K", 2000], ["$2k", 2000], ["1.5k", 1500],
+    ["$1.5K", 1500], ["2.25k", 2250], ["0.5k", 500], ["$2,000", 2000], ["2000", 2000],
+  ] as const)("normalizes dock amount %s", (token, expected) => {
+    const result = parserRegistry.parse("dock", input(`A dock of ${token} has been applied to <@U123>.`));
+    expect(result?.values.amount).toBe(expected);
+  });
+
   it("is conservative with casual media messages", () => {
     expect(parserRegistry.parse("media-work", input("Morning everyone, hope you're well!"))).toBeNull();
     expect(parserRegistry.parse("media-work", input("Completed the client analytics automation and shipped the handoff."))?.values.classification).toBe("WORK_COMPLETED");

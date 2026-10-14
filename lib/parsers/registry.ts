@@ -99,10 +99,10 @@ class DockParser implements SlackMessageParser {
   readonly key = "dock";
   parse(input: ParserInput): ParseResult | null {
     const f = extractFields(input.text);
-    const inlineAmount = input.text.match(/\b(?:dock|deduction|penalty|fine)(?:\s+amount)?(?:\s+of)?\s*(?:PKR|Rs\.?|USD|\$)?\s*([\d,]+(?:\.\d+)?)/i)?.[1]
-      ?? input.text.match(/(?:PKR|Rs\.?|USD|\$)\s*([\d,]+(?:\.\d+)?)\s*(?:dock|deduction|penalty|fine)\b/i)?.[1]
+    const inlineAmount = input.text.match(/\b(?:dock|deduction|penalty|fine)(?:\s+amount)?(?:\s+of)?\s*(?:PKR|Rs\.?|USD|\$)?\s*([\d,]+(?:\.\d+)?\s*[kK]?)/i)?.[1]
+      ?? input.text.match(/(?:PKR|Rs\.?|USD|\$)\s*([\d,]+(?:\.\d+)?\s*[kK]?)\s*(?:dock|deduction|penalty|fine)\b/i)?.[1]
       ?? null;
-    const amount = money(first(f, "amount", "dock amount", "fine") ?? inlineAmount);
+    const amount = parseDockAmount(first(f, "amount", "dock amount", "fine") ?? inlineAmount);
     if (amount === null || !/\b(?:dock|deduction|penalty|fine)\b/i.test(input.text)) return null;
     const explicitReason = first(f, "reason")
       ?? input.text.match(/\b(?:for|due\s+to|because\s+of)\s+(.+?)(?=\s*<@[A-Z0-9]+>|\s*$)/is)?.[1]?.trim()
@@ -110,6 +110,21 @@ class DockParser implements SlackMessageParser {
     const warnings = explicitReason ? [] : ["Dock reason not specified in source message"];
     return { recordType: "DOCK", rawSourceId: input.rawSourceId, confidence: explicitReason ? 0.96 : 0.84, warnings, values: { amount, currency: first(f, "currency") ?? (input.text.includes("$") || /\bUSD\b/i.test(input.text) ? "USD" : "PKR"), reason: explicitReason ?? "Not specified in source message", appliedBy: first(f, "applied by", "reported by"), notes: first(f, "notes"), targetSlackUserIds: [...input.text.matchAll(/<@([A-Z0-9]+)>/g)].map((match) => match[1]) } };
   }
+}
+
+/** Parses a dock amount only after the dock grammar has selected the token.
+ * String decimal arithmetic keeps `1.5k` and `2.25k` exact. */
+export function parseDockAmount(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const normalized = raw.trim().replace(/^(?:PKR|Rs\.?|USD|\$)\s*/i, "").replace(/,/g, "").replace(/\s+/g, "");
+  const match = normalized.match(/^(\d+)(?:\.(\d+))?([kK])?$/);
+  if (!match) return money(raw);
+  const whole = BigInt(match[1]);
+  const fraction = match[2] ?? "";
+  if (!match[3]) return Number(`${whole}${fraction ? `.${fraction}` : ""}`);
+  const scale = 10n ** BigInt(fraction.length);
+  const thousandths = whole * 1000n * scale + BigInt(fraction || "0") * 1000n;
+  return Number(thousandths) / Number(scale);
 }
 
 class MediaWorkParser implements SlackMessageParser {

@@ -20,6 +20,8 @@ export interface Employee {
   activityTeams?: string[];
   divisions: string[];
   aliases?: string[];
+  pseudoName?: string;
+  workEmail?: string;
   leadership?: "CEO" | "COO" | "CTO";
   rankingEnabled: boolean;
   status: Status;
