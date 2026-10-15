@@ -5,7 +5,7 @@ createRequire(import.meta.url)("@next/env").loadEnvConfig(process.cwd());
 const { sql } = await import("drizzle-orm");
 const { getDb, closeDb } = await import("@/lib/db/client");
 const { resolveDateRange } = await import("@/lib/time-ranges");
-const { occurredAt, operationalShiftFilter } = await import("@/lib/operational-query");
+const { occurredAt, calendarTimestampFilter } = await import("@/lib/operational-query");
 
 const db = getDb();
 if (!db) throw new Error("DATABASE_URL is required.");
@@ -80,7 +80,7 @@ try {
     const range = resolveDateRange(period);
     const start = range.start.toISOString();
     const end = range.end.toISOString();
-    const current = operationalShiftFilter(occurredAt("occurred_at"), start, end);
+    const current = calendarTimestampFilter(occurredAt("occurred_at"), start, end);
     const result = await db.execute(sql`
       select
         count(*) filter(where kind='appointments')::int appointments,
@@ -101,7 +101,7 @@ try {
   const customRange = resolveDateRange("Custom Range", "2026-05-01", "2026-08-20");
   const customStart = customRange.start.toISOString();
   const customEnd = customRange.end.toISOString();
-  const customFilter = operationalShiftFilter(occurredAt("occurred_at"), customStart, customEnd);
+  const customFilter = calendarTimestampFilter(occurredAt("occurred_at"), customStart, customEnd);
   const customResult = await db.execute(sql`
     select count(*) filter(where kind='appointments')::int appointments,
       count(*) filter(where kind='sales')::int sales, count(*) filter(where kind='leads')::int leads,

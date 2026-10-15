@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { operationalDateFor, resolveDateRange } from "@/lib/time-ranges";
+import { calendarDateFor, resolveDateRange } from "@/lib/time-ranges";
 import type { PeriodKey } from "@/types/dashboard";
 
 /**
  * Period-filter regression coverage.
  *
- * Every dashboard period resolves to an operational window that starts at 09:00
- * America/Chicago on its first day and ends at 19:00 on its last day, and
+ * Every dashboard period resolves to an calendar window that starts at 00:00
+ * America/Chicago on its first day and ends at 00:00 after its last day, and
  * the comparison window is the immediately preceding stretch of equal length.
  */
 // 2026-08-21 13:30 America/Chicago -> operational date 2026-08-21 (Friday).
 const NOW = new Date("2026-08-21T18:30:00Z");
 const CENTRAL = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", hour12: false,
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 const local = (date: Date) => CENTRAL.format(date).replace(", ", " ");
 
@@ -35,28 +35,28 @@ describe("dashboard period filters", () => {
     expect(range.label).toBe(`${startDate} – ${endDate}`);
   });
 
-  it.each(PERIODS)("%s spans 09:00 to 19:00 America/Chicago", (period) => {
+  it.each(PERIODS)("%s spans midnight to midnight America/Chicago", (period) => {
     const range = resolveDateRange(period, undefined, undefined, NOW);
-    expect(local(range.start).endsWith(" 09:00")).toBe(true);
-    expect(local(range.end).endsWith(" 19:00")).toBe(true);
+    expect(local(range.start).endsWith(" 00:00")).toBe(true);
+    expect(local(range.end).endsWith(" 00:00")).toBe(true);
     expect(range.start.getTime()).toBeLessThan(range.end.getTime());
   });
 
   it.each(PERIODS)("%s compares against the preceding window of equal length", (period, startDate, _e, dayCount) => {
     const range = resolveDateRange(period, undefined, undefined, NOW);
-    // A window runs 09:00 on its first operational day to 19:00 on its last,
-    // so its wall-clock span is dayCount days minus 14 hours. Comparing the
+    // A window runs midnight on its first date to midnight after its last,
+    // with calendar arithmetic independent of DST elapsed hours. Comparing the
     // operational date bounds is what actually shows the windows line up.
     const spanInDays = (Date.parse(`${range.previousEndDateExclusive}T00:00:00Z`) - Date.parse(`${range.previousStartDate}T00:00:00Z`)) / 86_400_000;
     expect(spanInDays).toBe(dayCount);
     expect(range.previousEndDateExclusive).toBe(startDate);
-    expect(range.previousEnd.getTime()).toBeLessThanOrEqual(range.start.getTime());
+    expect(range.previousEnd.getTime()).toBe(range.start.getTime());
   });
 
   it("gives Today and Yesterday adjacent, non-overlapping windows", () => {
     const today = resolveDateRange("Today", undefined, undefined, NOW);
     const yesterday = resolveDateRange("Yesterday", undefined, undefined, NOW);
-    expect(yesterday.end.getTime()).toBeLessThanOrEqual(today.start.getTime());
+    expect(yesterday.end.getTime()).toBe(today.start.getTime());
     expect(yesterday.endDate).toBe("2026-08-20");
     expect(today.startDate).toBe("2026-08-21");
   });
@@ -87,8 +87,8 @@ describe("dashboard period filters", () => {
   });
 
   it("keeps post-midnight Pakistan activity on the Central calendar day", () => {
-    expect(operationalDateFor(new Date("2026-08-21T19:00:00Z"))).toBe("2026-08-21"); // 00:00 PKT on the 22nd
-    expect(operationalDateFor(new Date("2026-08-21T23:59:00Z"))).toBe("2026-08-21"); // 04:59 PKT
-    expect(operationalDateFor(new Date("2026-08-22T00:00:00Z"))).toBe("2026-08-21"); // 19:00 Central, outside shift
+    expect(calendarDateFor(new Date("2026-08-21T19:00:00Z"))).toBe("2026-08-21"); // 00:00 PKT on the 22nd
+    expect(calendarDateFor(new Date("2026-08-21T23:59:00Z"))).toBe("2026-08-21"); // 04:59 PKT
+    expect(calendarDateFor(new Date("2026-08-22T00:00:00Z"))).toBe("2026-08-21"); // 19:00 Central, outside shift
   });
 });

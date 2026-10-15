@@ -2,7 +2,7 @@
 
 import { CalendarDays, Check, ChevronDown, LoaderCircle, Menu, Search } from "lucide-react";
 import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
-import { operationalDateFor } from "@/lib/time-ranges";
+import { calendarDateFor } from "@/lib/time-ranges";
 import type { PeriodKey } from "@/types/dashboard";
 
 const periods:PeriodKey[] = ["Today", "Yesterday", "This Week", "Last Week", "This Month", "Last Month", "Custom Range"];
@@ -11,7 +11,7 @@ export function Topbar({ period, setPeriod, openMenu, search, setSearch, loading
   const [periodMenuOpen,setPeriodMenuOpen]=useState(false);
   const periodMenuRef=useRef<HTMLDivElement>(null);
   const periodTriggerRef=useRef<HTMLButtonElement>(null);
-  const today=operationalDateFor(new Date());
+  const today=calendarDateFor(new Date());
   const runApply=(form:HTMLFormElement|null)=>{if(!form)return;const values=new FormData(form);const selectedStart=String(values.get("start")??"");const selectedEnd=String(values.get("end")??"");if(selectedStart&&selectedEnd&&selectedStart<=selectedEnd)setPeriod("Custom Range",selectedStart,selectedEnd)};
   const applyRange=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();runApply(event.currentTarget)};
   useEffect(()=>{

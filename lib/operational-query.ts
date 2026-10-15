@@ -11,8 +11,14 @@ const shiftEndSql = sql.raw(`time '${SHIFT_END_TIME}'`);
 
 export const occurredAt = (qualifiedName: string) => sql.raw(qualifiedName);
 
-export const operationalDateSql = (column: SQL) =>
+export const calendarDateSql = (column: SQL) =>
   sql`timezone(${timezoneSql}, ${column})::date`;
+
+export const operationalDateSql = calendarDateSql;
+
+/** Index-friendly half-open source-instant range; no shift-hour restriction. */
+export const calendarTimestampFilter = (column: SQL, start: string, end: string) =>
+  sql`(${column} >= ${start} and ${column} < ${end})`;
 
 export const operationalShiftFilter = (column: SQL, start: string, end: string) => sql`(
   ${column} >= ${start} and ${column} < ${end}

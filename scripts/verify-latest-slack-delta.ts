@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 
 createRequire(import.meta.url)("@next/env").loadEnvConfig(process.cwd());
 
-const [{ sql }, { closeDb, getDb }, { parserRegistry }, { resolveDateRange }, { primaryMetricForTitle }, { occurredAt, operationalShiftFilter }] = await Promise.all([
+const [{ sql }, { closeDb, getDb }, { parserRegistry }, { resolveDateRange }, { primaryMetricForTitle }, { occurredAt, calendarTimestampFilter }] = await Promise.all([
   import("drizzle-orm"),
   import("@/lib/db/client"),
   import("@/lib/parsers/registry"),
@@ -84,8 +84,8 @@ try {
   const workspaceId = text(rows(workspaceResult)[0]?.workspace_id);
   const today = resolveDateRange("Today");
   const week = resolveDateRange("This Week");
-  const todayFilter = operationalShiftFilter(occurredAt("occurred_at"), today.start.toISOString(), today.end.toISOString());
-  const weekFilter = operationalShiftFilter(occurredAt("occurred_at"), week.start.toISOString(), week.end.toISOString());
+  const todayFilter = calendarTimestampFilter(occurredAt("occurred_at"), today.start.toISOString(), today.end.toISOString());
+  const weekFilter = calendarTimestampFilter(occurredAt("occurred_at"), week.start.toISOString(), week.end.toISOString());
   const trace: Row[] = [];
 
   for (const row of deltaRows) {

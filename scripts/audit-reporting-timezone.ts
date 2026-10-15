@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {sql} from "drizzle-orm";
 import {PgDialect} from "drizzle-orm/pg-core";
 import {operationalDateSql,operationalShiftFilter} from "../lib/operational-query";
-import {resolveDateRange,operationalDateFor,isWithinOperationalShift} from "../lib/time-ranges";
+import {resolveOperationalShiftRange as resolveDateRange,operationalDateFor,isWithinOperationalShift} from "../lib/time-ranges";
 try {
   await db.begin(async tx=>{
     await tx`set transaction read only`;

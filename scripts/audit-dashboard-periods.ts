@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 
 createRequire(import.meta.url)("@next/env").loadEnvConfig(process.cwd());
 
-const [{ sql }, { closeDb, getDb }, { resolveDateRange }, { occurredAt, operationalShiftFilter }] = await Promise.all([
+const [{ sql }, { closeDb, getDb }, { resolveDateRange }, { occurredAt, calendarTimestampFilter }] = await Promise.all([
   import("drizzle-orm"),
   import("@/lib/db/client"),
   import("@/lib/time-ranges"),
@@ -31,7 +31,7 @@ try {
     const range = resolveDateRange(item.period, item.start, item.end);
     const start = range.start.toISOString();
     const end = range.end.toISOString();
-    const current = (column: string) => operationalShiftFilter(occurredAt(column), start, end);
+    const current = (column: string) => calendarTimestampFilter(occurredAt(column), start, end);
     const database = rows(await db.execute(sql`
       select
         (select count(*)::int from appointments where ${current("occurred_at")}) appointments,

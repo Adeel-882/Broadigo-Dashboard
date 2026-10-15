@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 
 createRequire(import.meta.url)("@next/env").loadEnvConfig(process.cwd());
 
-const [{ sql }, { closeDb, getDb }, { resolveDateRange, REPORTING_TIME_ZONE }, { occurredAt, operationalShiftFilter }] = await Promise.all([
+const [{ sql }, { closeDb, getDb }, { resolveDateRange, REPORTING_TIME_ZONE }, { occurredAt, calendarTimestampFilter }] = await Promise.all([
   import("drizzle-orm"),
   import("@/lib/db/client"),
   import("@/lib/time-ranges"),
@@ -18,7 +18,7 @@ const isa = ["Asif Hazoor", "Ali Jan", "Haji Siraj Ahmed", "Araad Rana", "Alishb
 const week = resolveDateRange("This Week");
 const start = week.start.toISOString();
 const end = week.end.toISOString();
-const current = (column: string) => operationalShiftFilter(occurredAt(column), start, end);
+const current = (column: string) => calendarTimestampFilter(occurredAt(column), start, end);
 
 type Row = Record<string, unknown>;
 const rows = (result: unknown) => result as Row[];

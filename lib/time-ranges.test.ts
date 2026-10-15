@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWithinOperationalShift, operationalDateFor, resolveDateRange, formatReportingTimestamp } from "./time-ranges";
+import { isWithinOperationalShift, operationalDateFor, resolveOperationalShiftRange as resolveDateRange, formatReportingTimestamp } from "./time-ranges";
 import { autoDockBusinessDateFor } from "./auto-docks/time";
 import { latestClosedBusinessDate } from "./auto-docks/policy";
 

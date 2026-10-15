@@ -37,7 +37,7 @@ function parseDate(value: string) {
   return parsed;
 }
 
-/** Resolve the unambiguous daytime shift boundaries using IANA/Intl rules.
+/** Resolve Chicago midnight or daytime boundaries using IANA/Intl rules.
  * Calendar arithmetic above is deliberately separate from elapsed UTC hours. */
 function reportingLocalToUtc(date: Date, hour: number) {
   const wall = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour);
@@ -51,11 +51,14 @@ function reportingLocalToUtc(date: Date, hour: number) {
   throw new Error("Unable to resolve reporting boundary.");
 }
 
-export function operationalDateFor(timestamp: Date) {
+export function calendarDateFor(timestamp: Date) {
   const local = reportingParts(timestamp);
   const calendarDate = dateFromParts(local.year, local.month, local.day);
   return formatDate(calendarDate);
 }
+
+/** Legacy name for explicit shift reports; Chicago's daytime shift does not cross midnight. */
+export const operationalDateFor = calendarDateFor;
 
 export function isWithinOperationalShift(timestamp: Date) {
   const { hour } = reportingParts(timestamp);
@@ -63,7 +66,7 @@ export function isWithinOperationalShift(timestamp: Date) {
 }
 
 export function resolveDateRange(period: PeriodKey, customStart?: string, customEnd?: string, now = new Date()) {
-  const operationalToday = parseDate(operationalDateFor(now));
+  const operationalToday = parseDate(calendarDateFor(now));
   let firstDay = operationalToday;
   let lastDay = operationalToday;
 
@@ -95,12 +98,23 @@ export function resolveDateRange(period: PeriodKey, customStart?: string, custom
   const previousEndDateExclusive = firstDay;
 
   return {
-    start: reportingLocalToUtc(firstDay, SHIFT_START_HOUR),
-    end: reportingLocalToUtc(lastDay, SHIFT_END_HOUR),
-    previousStart: reportingLocalToUtc(previousFirstDay, SHIFT_START_HOUR),
-    previousEnd: reportingLocalToUtc(addDays(firstDay, -1), SHIFT_END_HOUR),
+    start: reportingLocalToUtc(firstDay, 0),
+    end: reportingLocalToUtc(endDateExclusive, 0),
+    previousStart: reportingLocalToUtc(previousFirstDay, 0),
+    previousEnd: reportingLocalToUtc(previousEndDateExclusive, 0),
     startDate: formatDate(firstDay), endDate: formatDate(lastDay), endDateExclusive: formatDate(endDateExclusive),
     previousStartDate: formatDate(previousFirstDay), previousEndDateExclusive: formatDate(previousEndDateExclusive),
     dayCount, label: `${formatDate(firstDay)} – ${formatDate(lastDay)}`,
+  };
+}
+
+/** Opt-in operational reports only. Never use this for dashboard calendar filters. */
+export function resolveOperationalShiftRange(period: PeriodKey, customStart?: string, customEnd?: string, now = new Date()) {
+  const range = resolveDateRange(period, customStart, customEnd, now);
+  return {...range,
+    start: reportingLocalToUtc(parseDate(range.startDate), SHIFT_START_HOUR),
+    end: reportingLocalToUtc(parseDate(range.endDate), SHIFT_END_HOUR),
+    previousStart: reportingLocalToUtc(parseDate(range.previousStartDate), SHIFT_START_HOUR),
+    previousEnd: reportingLocalToUtc(addDays(parseDate(range.previousEndDateExclusive), -1), SHIFT_END_HOUR),
   };
 }

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { primaryMetricForTitle } from "@/lib/dashboard-metrics";
 import { targetRoleForTitle } from "@/lib/performance-targets";
-import { occurredAt, operationalDateSql, operationalShiftFilter } from "@/lib/operational-query";
+import { occurredAt, calendarDateSql, calendarTimestampFilter } from "@/lib/operational-query";
 import { leadExclusionLabel, type LeadExclusionReason } from "@/lib/slack/reactions";
 import { resolveDateRange, REPORTING_TIME_ZONE, formatReportingTimestamp } from "@/lib/time-ranges";
 import type { Activity, DashboardData, Employee, EmployeeDetailData, PeriodKey, Status } from "@/types/dashboard";
@@ -68,7 +68,7 @@ const dashboardRange = (range: ReturnType<typeof resolveDateRange>) => ({
 const serializedRange = (range: ReturnType<typeof resolveDateRange>) => ({ start: range.start.toISOString(), end: range.end.toISOString(), startDate: range.startDate, endDate: range.endDate, label: range.label });
 /**
  * A lead contributes to Lead Management KPIs only when the ISA owned it on the
- * operational date AND management has not excluded it with an :x: / :arrow_left:
+ * calendar date AND management has not excluded it with an :x: / :arrow_left:
  * Slack reaction. Excluded leads stay visible as evidence; they just stop counting.
  */
 const countedIsaLead = (employeeColumn: string, occurredAtColumn: string, kpiColumn = "l.counts_toward_kpi") =>
@@ -78,8 +78,8 @@ const isaLeadMembership = (employeeColumn: string, occurredAtColumn: string) => 
   join teams isa_team on isa_team.id=isa_membership.team_id
   where isa_membership.employee_id=${occurredAt(employeeColumn)}
     and isa_team.slug='isa-lead-management'
-    and (isa_membership.start_date is null or isa_membership.start_date<=${operationalDateSql(occurredAt(occurredAtColumn))})
-    and (isa_membership.end_date is null or isa_membership.end_date>=${operationalDateSql(occurredAt(occurredAtColumn))})
+    and (isa_membership.start_date is null or isa_membership.start_date<=${calendarDateSql(occurredAt(occurredAtColumn))})
+    and (isa_membership.end_date is null or isa_membership.end_date>=${calendarDateSql(occurredAt(occurredAtColumn))})
 )`;
 
 /**
@@ -133,8 +133,8 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
   if (process.env.DEMO_DATA_ENABLED === "true" && process.env.NODE_ENV !== "production") return demoData(period, range);
   const db = getDb(); if (!db) return emptyData(period, range);
   const {start,end,previousStart,previousEnd}=dashboardRange(range);
-  const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
-  const previous=(column:string)=>operationalShiftFilter(occurredAt(column),previousStart,previousEnd);
+  const current=(column:string)=>calendarTimestampFilter(occurredAt(column),start,end);
+  const previous=(column:string)=>calendarTimestampFilter(occurredAt(column),previousStart,previousEnd);
   const [summaryResult, peopleResult, outputResult, teamResult, targetResult, trendResult, activityResult, dockResult, healthResult, channelResult, appointmentsByTeamResult] = await Promise.all([
     db.execute(sql`select
       (select count(*) from appointments where ${current("occurred_at")})::int appointments,
@@ -177,7 +177,7 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
       coalesce((select count(*) from media_activity ma where ma.team_id=t.id and ${current("ma.occurred_at")}),0)::numeric work
       from teams t join divisions d on d.id=t.division_id left join employee_team_memberships m on m.team_id=t.id left join employees e on e.id=m.employee_id group by t.id,d.name order by d.name,t.name`),
     db.execute(sql`select tg.id, coalesce(t.name,'Company') team, coalesce(tg.role,'All eligible') role, tg.metric, tg.period, tg.value, tg.effective_from, tg.effective_to, e.canonical_name employee from targets tg left join teams t on t.id=tg.team_id left join employees e on e.id=tg.employee_id where tg.active=true and tg.effective_from<=${range.endDate} and (tg.effective_to is null or tg.effective_to>=${range.startDate}) order by team, metric`),
-    db.execute(sql`select to_char(${operationalDateSql(occurredAt("occurred_at"))}, 'Mon DD') as "day", count(*)::int appointments from appointments where ${current("occurred_at")} group by ${operationalDateSql(occurredAt("occurred_at"))} order by ${operationalDateSql(occurredAt("occurred_at"))}`),
+    db.execute(sql`select to_char(${calendarDateSql(occurredAt("occurred_at"))}, 'Mon DD') as "day", count(*)::int appointments from appointments where ${current("occurred_at")} group by ${calendarDateSql(occurredAt("occurred_at"))} order by ${calendarDateSql(occurredAt("occurred_at"))}`),
     db.execute(sql`select * from (
       select a.id, a.employee_id, coalesce(e.canonical_name,'Unmapped') employee, 'Appointment' type, coalesce(a.prospect_name,'Appointment reported') summary, coalesce(a.state,'') detail, c.name channel, a.occurred_at, sm.raw_text raw, true counts_toward_kpi, '[]'::jsonb exclusion_reasons from appointments a join slack_messages sm on sm.id=a.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=a.employee_id where ${current("a.occurred_at")}
       union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
@@ -185,7 +185,7 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
       union all select ma.id,ma.employee_id,coalesce(e.canonical_name,'Unmapped'),'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=ma.employee_id where ${current("ma.occurred_at")}
       union all select dk.id,coalesce(dr.employee_id,dk.employee_id),coalesce(e.canonical_name,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join dock_recipients dr on dr.dock_id=dk.id left join employees e on e.id=coalesce(dr.employee_id,dk.employee_id) where ${current("dk.occurred_at")}
     ) r order by occurred_at desc limit 100`),
-    db.execute(sql`select dk.id, coalesce(dr.employee_id,dk.employee_id) employee_id, coalesce(e.canonical_name,'Unmapped') employee, to_char(${operationalDateSql(occurredAt("dk.occurred_at"))},'YYYY-MM-DD') date, dk.occurred_at, dk.amount, dk.currency, dk.reason, coalesce(dk.applied_by,'—') applied_by, c.name channel, c.slack_channel_id, sm.slack_ts, sm.raw_text raw from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join dock_recipients dr on dr.dock_id=dk.id left join employees e on e.id=coalesce(dr.employee_id,dk.employee_id) where ${current("dk.occurred_at")} order by dk.occurred_at desc,e.canonical_name`),
+    db.execute(sql`select dk.id, coalesce(dr.employee_id,dk.employee_id) employee_id, coalesce(e.canonical_name,'Unmapped') employee, to_char(${calendarDateSql(occurredAt("dk.occurred_at"))},'YYYY-MM-DD') date, dk.occurred_at, dk.amount, dk.currency, dk.reason, coalesce(dk.applied_by,'—') applied_by, c.name channel, c.slack_channel_id, sm.slack_ts, sm.raw_text raw from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join dock_recipients dr on dr.dock_id=dk.id left join employees e on e.id=coalesce(dr.employee_id,dk.employee_id) where ${current("dk.occurred_at")} order by dk.occurred_at desc,e.canonical_name`),
     db.execute(sql`select
       count(*)::int raw,
       count(*) filter(where parser_status='PARSED')::int parsed, count(*) filter(where parser_status='UNPARSED')::int unparsed, count(*) filter(where parser_status='ERROR')::int errors,
@@ -243,19 +243,19 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
   const db = getDb();
   if (!db) return { employeeId, metricLabel: "Activity", trend: [], activities: [] };
   const {start,end}=dashboardRange(range);
-  const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
+  const current=(column:string)=>calendarTimestampFilter(occurredAt(column),start,end);
   const employeeResult = await db.execute(sql`select canonical_name, job_title from employees where id=${employeeId} limit 1`);
   const employeeRow = rows(employeeResult)[0];
   if (!employeeRow) throw new Error("Employee not found.");
   const metric = primaryMetricForTitle(text(employeeRow.job_title));
   const metricLabel = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Media activity";
   const trendResult = metric === "revenue"
-    ? await db.execute(sql`select ${operationalDateSql(occurredAt("occurred_at"))} as "day",coalesce(sum(amount),0)::numeric as "value" from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`)
+    ? await db.execute(sql`select ${calendarDateSql(occurredAt("occurred_at"))} as "day",coalesce(sum(amount),0)::numeric as "value" from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`)
     : metric === "leads"
-      ? await db.execute(sql`select ${operationalDateSql(occurredAt("l.occurred_at"))} as "day",count(*)::int as "value" from leads l where l.employee_id=${employeeId}::uuid and ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")} group by 1 order by 1`)
+      ? await db.execute(sql`select ${calendarDateSql(occurredAt("l.occurred_at"))} as "day",count(*)::int as "value" from leads l where l.employee_id=${employeeId}::uuid and ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")} group by 1 order by 1`)
       : metric === "work"
-        ? await db.execute(sql`select ${operationalDateSql(occurredAt("occurred_at"))} as "day",count(*)::int as "value" from media_activity where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`)
-        : await db.execute(sql`select ${operationalDateSql(occurredAt("occurred_at"))} as "day",count(*)::int as "value" from appointments where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`);
+        ? await db.execute(sql`select ${calendarDateSql(occurredAt("occurred_at"))} as "day",count(*)::int as "value" from media_activity where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`)
+        : await db.execute(sql`select ${calendarDateSql(occurredAt("occurred_at"))} as "day",count(*)::int as "value" from appointments where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`);
   const activitiesResult = await db.execute(sql`select * from (
     select a.id,a.employee_id,e.canonical_name employee,'Appointment' type,coalesce(a.prospect_name,'Appointment reported') summary,coalesce(a.state,'') detail,c.name channel,a.occurred_at,sm.raw_text raw,true counts_toward_kpi,'[]'::jsonb exclusion_reasons from appointments a join employees e on e.id=a.employee_id join slack_messages sm on sm.id=a.slack_message_id join slack_channels c on c.id=sm.channel_id where a.employee_id=${employeeId} and ${current("a.occurred_at")}
     union all select s.id,s.employee_id,e.canonical_name,'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join employees e on e.id=s.employee_id join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id where s.employee_id=${employeeId} and ${current("s.occurred_at")}
@@ -267,7 +267,7 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
   // Calls this employee has been assigned to conduct. The setter keeps ownership
   // of the record; this is a read-only view of the assignment, joined through the
   // Slack identity stored in appointments.assigned_person. It uses the same
-  // operational period as the employee KPI, so the tab count and records always
+  // calendar period as the employee KPI, so the tab count and records always
   // agree with the active Today/Week/Month/custom filter.
   const assignedCallsResult = await db.execute(sql`
     select a.id, a.prospect_name, a.scheduled_text, a.scheduled_at, a.occurred_at, a.phone, a.state, a.original_timezone,
@@ -287,7 +287,7 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
     limit 500`);
 
   // Official target values are fixed, while every numerator follows the same
-  // active operational range as the employee's headline KPI and evidence.
+  // active calendar range as the employee's headline KPI and evidence.
   const [periodResult] = rows(await db.execute(sql`select
     (select coalesce(sum(amount),0)::numeric from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) revenue,
     (select count(*)::int from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) closed_sales,
@@ -336,7 +336,7 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
 
 export async function searchDashboardActivities(query: string, period: PeriodKey = "This Week", customStart?: string, customEnd?: string): Promise<Activity[]> {
   const term=query.trim();if(term.length<2)return[];
-  const db=getDb();if(!db)return[];const range=resolveDateRange(period,customStart,customEnd);const {start,end}=dashboardRange(range),pattern=`%${term}%`;const current=(column:string)=>operationalShiftFilter(occurredAt(column),start,end);
+  const db=getDb();if(!db)return[];const range=resolveDateRange(period,customStart,customEnd);const {start,end}=dashboardRange(range),pattern=`%${term}%`;const current=(column:string)=>calendarTimestampFilter(occurredAt(column),start,end);
   const result=await db.execute(sql`select * from (
     select a.id,a.employee_id,coalesce(e.canonical_name,'Unmapped') employee,'Appointment' type,coalesce(a.prospect_name,'Appointment reported') summary,concat_ws(' · ',a.state,a.phone,a.assigned_person) detail,c.name channel,a.occurred_at,sm.raw_text raw,true counts_toward_kpi,'[]'::jsonb exclusion_reasons from appointments a join slack_messages sm on sm.id=a.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=a.employee_id where ${current("a.occurred_at")}
     union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat_ws(' · ',s.currency||' '||s.amount,s.package_name,s.state,array_to_string(s.zip_codes,',')),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
