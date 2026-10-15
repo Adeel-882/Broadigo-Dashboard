@@ -5,6 +5,10 @@ import { recordSlackEventOutcome } from "@/lib/slack/observability";
 import { verifySlackSignature } from "@/lib/slack/signature";
 import type { SlackEnvelope, SlackEventCallback, SlackMessageEvent, SlackReactionEvent, SlackReactionEventCallback } from "@/lib/slack/types";
 import { classifySlackEnvelope } from "@/lib/slack/event-routing";
+import { queueGeneralEvent } from "@/lib/auto-docks/attendance";
+import { reconcilePendingDays } from "@/lib/auto-docks/scheduler";
+import { FIRST_APPROVED_BUSINESS_DATE, GENERAL_CHANNEL_ID, latestClosedBusinessDate } from "@/lib/auto-docks/policy";
+import { operationalDateFor } from "@/lib/time-ranges";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +58,19 @@ export async function POST(request: Request) {
     slackTs: event?.ts ?? event?.item?.ts ?? null,
   };
 
+  if (event?.type === "message" && event.channel === GENERAL_CHANNEL_ID) {
+    const originalTs=event.message?.ts ?? event.previous_message?.ts ?? event.ts;
+    try {
+      const matched=await queueGeneralEvent(callback.team_id,event.channel,originalTs ?? "");
+      if(matched) await reconcilePendingDays();
+      console.info("[auto-dock]",JSON.stringify({eventId:callback.event_id,channel:event.channel,result:matched?"attendance-queued":"workspace-mismatch"}));
+      return Response.json({ok:true,result:matched?"attendance-queued":"ignored"});
+    } catch {
+      console.error("[auto-dock] attendance reconciliation failed; Slack retry and durable queue retained");
+      return Response.json({ok:false,error:"attendance-processing-failed"},{status:500});
+    }
+  }
+
   if (routing.action === "ignore") {
     await recordSlackEventOutcome({ ...identity, routingAction: "ignore", result: "ignored", reason: routing.reason });
     return Response.json({ ok: true, ignored: routing.reason });
@@ -86,6 +103,17 @@ export async function POST(request: Request) {
     // A missing database means the write never happened; make Slack retry it.
     if (status === "database-not-configured") {
       return Response.json({ ok: false, error: "database-not-configured" }, { status: 500 });
+    }
+    // Structured writes enqueue their original business day in the SAME DB
+    // transaction via triggers. Reconcile closed days inline; on failure the
+    // durable queue remains available to cron without undoing Slack ingestion.
+    const sourceTs=event.message?.ts ?? event.ts;
+    if(sourceTs && /^\d+\.\d+$/.test(sourceTs)) {
+      const sourceDay=operationalDateFor(new Date(Number(sourceTs)*1000));
+      if(sourceDay>=FIRST_APPROVED_BUSINESS_DATE && sourceDay<=latestClosedBusinessDate()) {
+        try { await reconcilePendingDays(); }
+        catch { console.error("[auto-dock] late activity reconciliation deferred; durable queue retained"); }
+      }
     }
     return Response.json({ ok: true, result: status }, { status: 200 });
   } catch (error) {

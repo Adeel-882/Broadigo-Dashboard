@@ -119,6 +119,16 @@ async function demoData(period: PeriodKey, range: ReturnType<typeof resolveDateR
 }
 
 export async function getDashboardData(period: PeriodKey = "This Week", customStart?: string, customEnd?: string): Promise<DashboardData> {
+  const data=await getBaseDashboardData(period,customStart,customEnd);
+  if(data.mode!=="live")return data;
+  const {automaticDockRecords}=await import("./auto-docks/dashboard");
+  const range=resolveDateRange(period,customStart,customEnd);
+  const automatic=await automaticDockRecords(range.startDate,range.endDate);
+  data.docks=[...data.docks,...automatic].sort((a,b)=>b.date.localeCompare(a.date));
+  return data;
+}
+
+async function getBaseDashboardData(period: PeriodKey = "This Week", customStart?: string, customEnd?: string): Promise<DashboardData> {
   const range = resolveDateRange(period, customStart, customEnd);
   if (process.env.DEMO_DATA_ENABLED === "true" && process.env.NODE_ENV !== "production") return demoData(period, range);
   const db = getDb(); if (!db) return emptyData(period, range);
@@ -136,8 +146,8 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
       (select count(*) from leads l where ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")})::int leads,
       (select count(*) from leads l where ${previous("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")})::int leads_prev,
       (select count(*) from leads l where ${current("l.occurred_at")} and ${isaLeadMembership("l.employee_id", "l.occurred_at")})::int leads_submitted,
-      (select coalesce(sum(case when exists(select 1 from dock_recipients dr where dr.dock_id=d.id) then (select count(*) from dock_recipients dr where dr.dock_id=d.id) else 1 end),0) from docks d where ${current("d.occurred_at")})::int docks,
-      (select coalesce(sum(case when exists(select 1 from dock_recipients dr where dr.dock_id=d.id) then (select count(*) from dock_recipients dr where dr.dock_id=d.id) else 1 end),0) from docks d where ${previous("d.occurred_at")})::int docks_prev,
+      ((select coalesce(sum(case when exists(select 1 from dock_recipients dr where dr.dock_id=d.id) then (select count(*) from dock_recipients dr where dr.dock_id=d.id) else 1 end),0) from docks d where ${current("d.occurred_at")})+(select count(*) from automatic_docks where status='active' and business_date>=${range.startDate}::date and business_date<=${range.endDate}::date))::int docks,
+      ((select coalesce(sum(case when exists(select 1 from dock_recipients dr where dr.dock_id=d.id) then (select count(*) from dock_recipients dr where dr.dock_id=d.id) else 1 end),0) from docks d where ${previous("d.occurred_at")})+(select count(*) from automatic_docks where status='active' and business_date>=${range.previousStartDate}::date and business_date<${range.previousEndDateExclusive}::date))::int docks_prev,
       (select count(*) from media_activity where ${current("occurred_at")})::int media,
       (select count(*) from media_activity where ${previous("occurred_at")})::int media_prev`),
     db.execute(sql`with activity as (${teamActivity(current)})
@@ -219,6 +229,16 @@ export async function getDashboardData(period: PeriodKey = "This Week", customSt
 }
 
 export async function getEmployeeDetail(employeeId: string, period: PeriodKey = "This Week", customStart?: string, customEnd?: string): Promise<EmployeeDetailData> {
+  const detail=await getBaseEmployeeDetail(employeeId,period,customStart,customEnd);
+  if(!getDb())return detail;
+  const {automaticDockRecords}=await import("./auto-docks/dashboard");
+  const range=resolveDateRange(period,customStart,customEnd);
+  const records=await automaticDockRecords(range.startDate,range.endDate,employeeId);
+  detail.activities.push(...records.map(r=>r.activity));
+  return detail;
+}
+
+async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "This Week", customStart?: string, customEnd?: string): Promise<EmployeeDetailData> {
   const range = resolveDateRange(period, customStart, customEnd);
   const db = getDb();
   if (!db) return { employeeId, metricLabel: "Activity", trend: [], activities: [] };

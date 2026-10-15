@@ -44,7 +44,7 @@ export interface Employee {
 export interface MetricCard { label: string; value: string; delta: number | null; note: string; kind: MetricKind; submitted?: number; excluded?: number; }
 export interface DivisionMetric { name: string; eyebrow: string; outputs: { label: string; value: string; kind: MetricKind }[]; accent: string; }
 export interface TeamMetric { id: string; division: string; name: string; role: string; metric: string; label: string; status: Status; progress: number | null; members: string[]; memberCount: number; }
-export interface DockRecord { id: string; employeeId: string; employee: string; date: string; amount: string; currency: string; reason: string; appliedBy: string; activity: Activity; }
+export interface DockRecord { id: string; employeeId: string; employee: string; date: string; amount: string; currency: string; reason: string; appliedBy: string; activity: Activity; sourceType?: "automatic_inactivity"; }
 export interface TargetRecord { id: string; team: string; role: string; metric: string; period: string; value: string; employee: string | null; effectiveFrom: string; effectiveTo: string | null; }
 export interface TrendPoint { day: string; value: number; }
 export interface ChannelHealth { id: string; name: string; slackChannelId: string; workspaceId: string; active: boolean; lastEventAt: string | null; }
@@ -123,6 +123,7 @@ export interface DashboardData {
 }
 
 export interface Activity {
+  autoDockAudit?: {businessDate:string;attendance:string;appointments:number;sales:number;rule:string;windowStart:string;windowEnd:string;checkInLinks:string[]};
   id: string;
   employeeId: string;
   employee: string;

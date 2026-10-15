@@ -214,4 +214,23 @@ export const syncRuns = pgTable("sync_runs", {
 }, (table) => [index("sync_runs_workspace_time_idx").on(table.workspaceId, table.startedAt)]);
 
 export const employeeRelations = relations(employees, ({ many }) => ({ memberships: many(memberships), slackIdentities: many(slackIdentities) }));
+export const autoDockSettings = pgTable("auto_dock_settings", {
+  id: integer("id").primaryKey(), enabled: boolean("enabled").notNull().default(false),
+  workspaceId: text("workspace_id").notNull(), generalChannelId: text("general_channel_id").notNull(),
+  attendanceReliableFrom: date("attendance_reliable_from"), effectiveFrom: date("effective_from"),
+  approvedCheckInPhrases: jsonb("approved_check_in_phrases").$type<string[]>().notNull().default([]),
+  approvedAt: timestamp("approved_at",{withTimezone:true}), updatedAt: timestamp("updated_at",{withTimezone:true}).notNull().defaultNow(),
+});
+export const autoDockPending = pgTable("auto_dock_pending", {businessDate:date("business_date").primaryKey(),requestedAt:timestamp("requested_at",{withTimezone:true}).notNull().defaultNow()});
+export const attendanceMessages = pgTable("attendance_messages", {
+  id: uuid("id").primaryKey().defaultRandom(), workspaceId:text("workspace_id").notNull(),channelId:text("channel_id").notNull(),slackTs:text("slack_ts").notNull(),slackUserId:text("slack_user_id").notNull(),employeeId:uuid("employee_id").references(()=>employees.id),
+  sourceAt:timestamp("source_at",{withTimezone:true}).notNull(),rawText:text("raw_text").notNull(),isCheckIn:boolean("is_check_in").notNull().default(false),deleted:boolean("deleted").notNull().default(false),receivedAt:timestamp("received_at",{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex("attendance_source_unique").on(t.workspaceId,t.channelId,t.slackTs),index("attendance_employee_time_idx").on(t.employeeId,t.sourceAt)]);
+export const attendanceCoverage = pgTable("attendance_coverage",{businessDate:date("business_date").primaryKey(),workspaceId:text("workspace_id").notNull(),channelId:text("channel_id").notNull(),fetchedAt:timestamp("fetched_at",{withTimezone:true}).notNull(),messageCount:integer("message_count").notNull()});
+export const autoDockExemptions = pgTable("auto_dock_exemptions",{employeeId:uuid("employee_id").notNull().references(()=>employees.id),businessDate:date("business_date").notNull(),reason:text("reason").notNull(),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow()},t=>[uniqueIndex("auto_dock_exemption_unique").on(t.employeeId,t.businessDate)]);
+export const automaticDocks = pgTable("automatic_docks",{
+  id:uuid("id").primaryKey().defaultRandom(),employeeId:uuid("employee_id").notNull().references(()=>employees.id),businessDate:date("business_date").notNull(),ruleCode:text("rule_code").notNull(),sourceType:text("source_type").notNull().default("automatic_inactivity"),amount:numeric("amount",{precision:14,scale:2}).notNull(),currency:text("currency").notNull().default("PKR"),reason:text("reason").notNull(),status:text("status").notNull(),evidence:jsonb("evidence").notNull(),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),updatedAt:timestamp("updated_at",{withTimezone:true}).notNull().defaultNow(),voidedAt:timestamp("voided_at",{withTimezone:true}),voidReason:text("void_reason"),
+},t=>[uniqueIndex("automatic_dock_employee_day_rule_unique").on(t.employeeId,t.businessDate,t.ruleCode),index("automatic_docks_date_idx").on(t.businessDate,t.status)]);
+export const autoDockRuns = pgTable("auto_dock_runs",{id:uuid("id").primaryKey().defaultRandom(),businessDate:date("business_date").notNull(),startedAt:timestamp("started_at",{withTimezone:true}).notNull().defaultNow(),completedAt:timestamp("completed_at",{withTimezone:true}),status:text("status").notNull(),summary:jsonb("summary").notNull().default({}),error:text("error")});
+export const autoDockEvaluations = pgTable("auto_dock_evaluations",{id:uuid("id").primaryKey().defaultRandom(),runId:uuid("run_id").notNull().references(()=>autoDockRuns.id),employeeId:uuid("employee_id").notNull().references(()=>employees.id),businessDate:date("business_date").notNull(),evaluatedAt:timestamp("evaluated_at",{withTimezone:true}).notNull().defaultNow(),dockId:uuid("dock_id").references(()=>automaticDocks.id),evidence:jsonb("evidence").notNull()},t=>[index("auto_dock_evaluation_day_idx").on(t.businessDate,t.employeeId)]);
 export const teamRelations = relations(teams, ({ one, many }) => ({ division: one(divisions, { fields: [teams.divisionId], references: [divisions.id] }), memberships: many(memberships) }));

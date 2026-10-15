@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionCookie, verifySession } from "@/lib/auth/session";
 
 export async function proxy(request: NextRequest) {
+  // This one endpoint validates its own scheduler bearer secret, not office sessions.
+  if (request.nextUrl.pathname === "/api/cron/auto-docks") return NextResponse.next();
   if (process.env.NODE_ENV !== "production" && process.env.DEMO_AUTH_BYPASS === "true") return NextResponse.next();
   const valid = await verifySession(request.cookies.get(sessionCookie.name)?.value);
   if (valid) return NextResponse.next();
