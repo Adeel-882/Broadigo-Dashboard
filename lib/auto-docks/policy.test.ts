@@ -1,19 +1,30 @@
+import {AUTO_DOCK_AMOUNTS} from "./policy";
 import { describe,expect,it } from "vitest";
 import { ATTENDANCE_BYPASS_CLOSERS, businessWindow,evaluateAutoDockState,isCheckIn,latestClosedBusinessDate,OBSERVED_CHECK_IN_PHRASES,type EvaluationInput } from "./policy";
 import { operationalDateFor } from "../time-ranges";
 
 const base:EvaluationInput={employeeId:"normal",title:"Appointment Setter",active:true,membershipEligible:true,checkInFound:true,attendanceReliable:true,exempt:false,appointments:0,sales:0};
 describe("attendance-gated automatic docks",()=>{
+  it("locks the corrected business amounts independently of shared config",()=>{
+    expect(AUTO_DOCK_AMOUNTS).toEqual({appointment_setter_zero_appointments:3000,closer_zero_sales:1500});
+  });
+  it("keeps manual and automatic records separate when totaling",()=>{
+    const manual={source:"manual",amount:2000};
+    for(const [title,total] of [["Appointment Setter",5000],["Closer",3500]] as const){
+      const records=[manual,{source:"automatic_inactivity",amount:evaluateAutoDockState({...base,title}).amount}];
+      expect(records).toHaveLength(2);expect(records.reduce((sum,r)=>sum+r.amount,0)).toBe(total);expect(manual.amount).toBe(2000);
+    }
+  });
   it.each([true,false])("setter matrix present=%s",present=>{
-    for(const appointments of [0,1,4]){const state=evaluateAutoDockState({...base,checkInFound:present,appointments});expect(state.amount).toBe(present&&appointments===0?1500:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
+    for(const appointments of [0,1,4]){const state=evaluateAutoDockState({...base,checkInFound:present,appointments});expect(state.amount).toBe(present&&appointments===0?AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
   });
   it.each([true,false])("closer matrix present=%s",present=>{
-    for(const sales of [0,1,3]){const state=evaluateAutoDockState({...base,title:"Closer",checkInFound:present,sales});expect(state.amount).toBe(present&&sales===0?3000:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
+    for(const sales of [0,1,3]){const state=evaluateAutoDockState({...base,title:"Closer",checkInFound:present,sales});expect(state.amount).toBe(present&&sales===0?AUTO_DOCK_AMOUNTS.closer_zero_sales:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
   });
   it.each([...ATTENDANCE_BYPASS_CLOSERS])("exception %s is ALWAYS closer-only regardless of appointment activity",employeeId=>{
     for(const checkInFound of [false,true])for(const sales of [0,1,2])for(const appointments of [0,5]){
       const result=evaluateAutoDockState({...base,employeeId,title:"Hybrid Media",checkInFound,sales,appointments});
-      expect(result.ruleCode).toBe("closer_zero_sales");expect(result.amount).toBe(sales?0:3000);expect(result.attendanceRequired).toBe(false);
+      expect(result.ruleCode).toBe("closer_zero_sales");expect(result.amount).toBe(sales?0:AUTO_DOCK_AMOUNTS.closer_zero_sales);expect(result.attendanceRequired).toBe(false);
     }
   });
   it("skips leave, inactive membership, inactive employee and unverified history including exceptions",()=>{
@@ -21,15 +32,15 @@ describe("attendance-gated automatic docks",()=>{
   });
   it("late check-in creates expected state; late owned activity removes it",()=>{
     expect(evaluateAutoDockState({...base,checkInFound:false}).amount).toBe(0);
-    expect(evaluateAutoDockState(base).amount).toBe(1500);
+    expect(evaluateAutoDockState(base).amount).toBe(AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments);
     expect(evaluateAutoDockState({...base,appointments:1}).amount).toBe(0);
-    expect(evaluateAutoDockState({...base,title:"Closer"}).amount).toBe(3000);
+    expect(evaluateAutoDockState({...base,title:"Closer"}).amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_sales);
     expect(evaluateAutoDockState({...base,title:"Closer",sales:1}).amount).toBe(0);
   });
   it("is deterministic across retries and ignores unrelated activity",()=>{
     expect(evaluateAutoDockState({...base,sales:5})).toEqual(evaluateAutoDockState({...base,sales:5}));
-    expect(evaluateAutoDockState({...base,title:"Closer",appointments:5}).amount).toBe(3000);
-    expect(evaluateAutoDockState({...base,sales:5}).amount).toBe(1500);
+    expect(evaluateAutoDockState({...base,title:"Closer",appointments:5}).amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_sales);
+    expect(evaluateAutoDockState({...base,sales:5}).amount).toBe(AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments);
   });
 });
 describe("attendance evidence",()=>{

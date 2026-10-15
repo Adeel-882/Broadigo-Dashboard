@@ -18,7 +18,15 @@ Observed messages: `Check in`, `checkin`, `Check in at 7`, `Check in at 7:00`, `
 
 Slack author user ID resolves through existing workspace identities. A complete, successful paginated history snapshot is required before a day receives coverage. Failed, partial, or in-progress snapshots cannot authorize financial evaluation. Current Slack snapshots handle edits/deletions; old event payloads cannot overwrite newer evidence.
 
-Active Appointment Setter + check-in + zero owned structured appointments: PKR 1,500. Active Closer + check-in + zero structured sales: PKR 3,000. Normal absence: no inactivity dock. Approved per-day exemption: no dock.
+Active Appointment Setter + check-in + zero owned structured appointments: **PKR 3,000**. Active Closer + check-in + zero structured sales: **PKR 1,500**. Normal absence: no inactivity dock. Approved per-day exemption: no dock.
+
+Harvey Benjamin and Dameon Wolfe remain attendance-bypass, Closer-only: zero sales means PKR 1,500; one or more sales means no automatic dock. Their appointments never affect this rule.
+
+Amounts are centralized in `AUTO_DOCK_AMOUNTS` in `lib/auto-docks/policy.ts`; the UI and dry-run display the evaluated/stored amount. Migration 0008 corrects the database amount CHECK without weakening other safeguards. Migration 0007 retains the old values solely as immutable applied history. Production contained zero automatic financial rows at correction time, so no financial rows were rewritten.
+
+Manual and automatic amounts remain separate: PKR 2,000 manual + PKR 3,000 Setter inactivity = PKR 5,000; PKR 2,000 manual + PKR 1,500 Closer inactivity = PKR 3,500. These are two records, never a merged dock.
+
+Amount-correction verification (October 15): 0 automatic rows before/after; all 51 employee/day dry-run results for October 12–14 were identical. These dates remain UNKNOWN/audit-only, since the first reliable approved day has not ended yet. Corrected charge amounts were verified with the real evaluator in temporary PostgreSQL tables, not by creating historical financial docks. Fingerprints matched for appointments (1,690), sales (111 / $121,400), manual docks (234 sources / PKR675,750), recipients, employees (40), memberships (48), attendance evidence (134), coverage (3), settings and evaluation history. The original 2,157 leads also matched exactly; two additional live Slack leads arrived at 20:24:38 and 20:25:33 Karachi during testing. Typecheck, lint and build passed; 404 regular tests passed, plus 2 explicitly enabled database integration tests and the database constraint verification script.
 
 Harvey Benjamin and Dameon Wolfe have centralized employee-ID attendance bypasses and **Closer-only** evaluation. Harvey's existing canonical title is Hybrid Media; the management-confirmed rule override does not mutate formal roles/memberships. Dameon can never receive the setter rule: policy tests and a PostgreSQL CHECK enforce this. Posting appointments has no effect on either exception's sale-count rule.
 

@@ -3,6 +3,10 @@ import { operationalDateFor } from "@/lib/time-ranges";
 /** Explicit management approval. Never backdate financial creation. */
 export const FIRST_APPROVED_BUSINESS_DATE = "2026-10-16";
 export const GENERAL_CHANNEL_ID = "C0980E2DWAK";
+export const AUTO_DOCK_AMOUNTS = {
+  appointment_setter_zero_appointments: 3000,
+  closer_zero_sales: 1500,
+} as const;
 export const OBSERVED_CHECK_IN_PHRASES = ["check in", "checkin", "cheak in", "check in at 7", "check in at 7:00", "clocked in @ 7:15 pm."];
 
 /** Management-confirmed roles for these two attendance exceptions. Never infer
@@ -50,6 +54,6 @@ export function evaluateAutoDockState(input: EvaluationInput) {
   const ruleCode=role==="CLOSER"?"closer_zero_sales":role==="SETTER"?"appointment_setter_zero_appointments":null;
   const decision=!input.active||!input.membershipEligible?"SKIP_INACTIVE":role==="OTHER"?"SKIP_ROLE":input.exempt?"SKIP_EXEMPT":!input.attendanceReliable?"SKIP_UNRELIABLE":attendanceRequired&&!input.checkInFound?"SKIP_ABSENT":(role==="CLOSER"?input.sales:input.appointments)>0?"ACTIVITY_RECORDED":"DOCK";
   return { role, ruleCode, attendanceRequired, attendanceStatus, decision,
-    amount:decision==="DOCK"?(role==="CLOSER"?3000:1500):0,
+    amount:decision==="DOCK"&&ruleCode?AUTO_DOCK_AMOUNTS[ruleCode]:0,
     reason:role==="CLOSER"?(attendanceRequired?"No sale reported while present":"No sale reported during business day — attendance gate bypass"):"No appointment scheduled while present" };
 }

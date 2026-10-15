@@ -1,3 +1,4 @@
+import {AUTO_DOCK_AMOUNTS} from "./policy";
 import {beforeAll,afterAll,describe,expect,it,vi} from "vitest";
 import postgres from "postgres";
 import {drizzle} from "drizzle-orm/postgres-js";
@@ -39,10 +40,10 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("real PostgreSQL evaluator 
   it("late check-in, repeated evaluation, late appointment and $0 sale reconcile without touching manual docks",async()=>{
     let result=await evaluateBusinessDay("2026-10-16",true,now);
     expect(result.evaluations.find(e=>e.employeeId===setter)?.decision).toBe("SKIP_ABSENT");
-    expect(result.evaluations.find(e=>e.employeeId===dameon)?.amount).toBe(3000);
+    expect(result.evaluations.find(e=>e.employeeId===dameon)?.amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_sales);
     await client`insert into attendance_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,source_at,raw_text,is_check_in) values('T098UDG2RED','C0980E2DWAK','1792159200.000001','U_TEST',${setter},'2026-10-16T14:00:00Z','check in',true)`;
     result=await evaluateBusinessDay("2026-10-16",true,now);
-    expect(result.evaluations.find(e=>e.employeeId===setter)?.amount).toBe(1500);
+    expect(result.evaluations.find(e=>e.employeeId===setter)?.amount).toBe(AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments);
     await evaluateBusinessDay("2026-10-16",true,now);
     expect(Number((await client`select count(*) n from automatic_docks where employee_id=${setter}`)[0].n)).toBe(1);
     for(const [channel,employee,kind] of [["sales-development-general",setter,"appointment"],["sales-reporting",dameon,"sale"]]){
