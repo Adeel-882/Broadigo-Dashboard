@@ -9,7 +9,6 @@ const [{ sql }, { closeDb, getDb }, shift] = await Promise.all([
 ]);
 
 const timezoneSql = sql.raw(`'${shift.DASHBOARD_TIMEZONE}'`);
-const operationalOffsetSql = sql.raw(`interval '${shift.SHIFT_END_HOUR} hours'`);
 const shiftStartSql = sql.raw(`time '${shift.SHIFT_START_TIME}'`);
 const shiftEndSql = sql.raw(`time '${shift.SHIFT_END_TIME}'`);
 
@@ -22,10 +21,10 @@ try {
     with eligible_sales as (
       select s.id, e.canonical_name employee, s.customer_name, s.amount, s.currency, s.occurred_at,
         timezone(${timezoneSql}, s.occurred_at) local_timestamp,
-        (timezone(${timezoneSql}, s.occurred_at) - ${operationalOffsetSql})::date operational_date
+        timezone(${timezoneSql}, s.occurred_at)::date operational_date
       from sales s left join employees e on e.id=s.employee_id
       where timezone(${timezoneSql}, s.occurred_at)::time >= ${shiftStartSql}
-        or timezone(${timezoneSql}, s.occurred_at)::time < ${shiftEndSql}
+        and timezone(${timezoneSql}, s.occurred_at)::time < ${shiftEndSql}
     )
     select employee, operational_date, count(*)::int sales, coalesce(sum(amount),0)::numeric revenue,
       min(local_timestamp) first_local_timestamp, max(local_timestamp) last_local_timestamp,
@@ -41,12 +40,12 @@ try {
   const boundaryEvidence = await db.execute(sql`
     select e.canonical_name employee, s.customer_name, s.amount, s.currency, s.occurred_at utc_timestamp,
       timezone(${timezoneSql}, s.occurred_at) local_timestamp,
-      (timezone(${timezoneSql}, s.occurred_at) - ${operationalOffsetSql})::date operational_date,
+      timezone(${timezoneSql}, s.occurred_at)::date operational_date,
       case when timezone(${timezoneSql}, s.occurred_at)::time >= ${shiftStartSql}
-        or timezone(${timezoneSql}, s.occurred_at)::time < ${shiftEndSql} then 'IN_SHIFT' else 'OUTSIDE_SHIFT' end shift_status
+        and timezone(${timezoneSql}, s.occurred_at)::time < ${shiftEndSql} then 'IN_SHIFT' else 'OUTSIDE_SHIFT' end shift_status
     from sales s left join employees e on e.id=s.employee_id
     where timezone(${timezoneSql}, s.occurred_at)::time >= ${shiftStartSql}
-       or timezone(${timezoneSql}, s.occurred_at)::time < ${shiftEndSql}
+       and timezone(${timezoneSql}, s.occurred_at)::time < ${shiftEndSql}
     order by s.occurred_at desc`);
 
   console.log("\nALL SHIFT-ELIGIBLE SALES WITH PRESERVED UTC/LOCAL TIMESTAMPS");

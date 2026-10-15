@@ -1,19 +1,28 @@
 import type { PeriodKey } from "@/types/dashboard";
 
-export const DASHBOARD_TIMEZONE = "Asia/Karachi" as const;
-export const SHIFT_START_HOUR = 19;
-export const SHIFT_END_HOUR = 5;
-export const SHIFT_START_TIME = "19:00" as const;
-export const SHIFT_END_TIME = "05:00" as const;
+export const REPORTING_TIME_ZONE = "America/Chicago" as const;
+export const DASHBOARD_TIMEZONE = REPORTING_TIME_ZONE;
+export const SHIFT_START_HOUR = 9;
+export const SHIFT_END_HOUR = 19;
+export const SHIFT_START_TIME = "09:00" as const;
+export const SHIFT_END_TIME = "19:00" as const;
 export const OPERATIONAL_SHIFT_LABEL = `${SHIFT_START_TIME}–${SHIFT_END_TIME}`;
-export const OPERATIONAL_SHIFT_HUMAN_LABEL = "7:00 PM–5:00 AM" as const;
+export const OPERATIONAL_SHIFT_HUMAN_LABEL = "9:00 AM–7:00 PM" as const;
 
-const KARACHI_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DAY_MS = 86_400_000;
+const clock = new Intl.DateTimeFormat("en-US", {
+  timeZone: REPORTING_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+const evidenceClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: REPORTING_TIME_ZONE, year: "numeric", month: "short", day: "numeric",
+  hour: "numeric", minute: "2-digit", timeZoneName: "short",
+});
+export const formatReportingTimestamp = (timestamp: Date) => evidenceClock.format(timestamp);
 
-function karachiParts(timestamp: Date) {
-  const local = new Date(timestamp.getTime() + KARACHI_OFFSET_MS);
-  return { year: local.getUTCFullYear(), month: local.getUTCMonth(), day: local.getUTCDate(), hour: local.getUTCHours() };
+function reportingParts(timestamp: Date) {
+  const parts = Object.fromEntries(clock.formatToParts(timestamp).map(p => [p.type, p.value]));
+  return { year: Number(parts.year), month: Number(parts.month) - 1, day: Number(parts.day), hour: Number(parts.hour), minute: Number(parts.minute), second: Number(parts.second) };
 }
 
 function dateFromParts(year: number, month: number, day: number) { return new Date(Date.UTC(year, month, day)); }
@@ -28,19 +37,29 @@ function parseDate(value: string) {
   return parsed;
 }
 
-function karachiLocalToUtc(date: Date, hour: number) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour) - KARACHI_OFFSET_MS);
+/** Resolve the unambiguous daytime shift boundaries using IANA/Intl rules.
+ * Calendar arithmetic above is deliberately separate from elapsed UTC hours. */
+function reportingLocalToUtc(date: Date, hour: number) {
+  const wall = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour);
+  let instant = wall;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const p = reportingParts(new Date(instant));
+    const correction = wall - Date.UTC(p.year, p.month, p.day, p.hour, p.minute, p.second);
+    if (correction === 0) return new Date(instant);
+    instant += correction;
+  }
+  throw new Error("Unable to resolve reporting boundary.");
 }
 
 export function operationalDateFor(timestamp: Date) {
-  const local = karachiParts(timestamp);
+  const local = reportingParts(timestamp);
   const calendarDate = dateFromParts(local.year, local.month, local.day);
-  return formatDate(local.hour < SHIFT_END_HOUR ? addDays(calendarDate, -1) : calendarDate);
+  return formatDate(calendarDate);
 }
 
 export function isWithinOperationalShift(timestamp: Date) {
-  const { hour } = karachiParts(timestamp);
-  return hour >= SHIFT_START_HOUR || hour < SHIFT_END_HOUR;
+  const { hour } = reportingParts(timestamp);
+  return hour >= SHIFT_START_HOUR && hour < SHIFT_END_HOUR;
 }
 
 export function resolveDateRange(period: PeriodKey, customStart?: string, customEnd?: string, now = new Date()) {
@@ -76,10 +95,10 @@ export function resolveDateRange(period: PeriodKey, customStart?: string, custom
   const previousEndDateExclusive = firstDay;
 
   return {
-    start: karachiLocalToUtc(firstDay, SHIFT_START_HOUR),
-    end: karachiLocalToUtc(endDateExclusive, SHIFT_END_HOUR),
-    previousStart: karachiLocalToUtc(previousFirstDay, SHIFT_START_HOUR),
-    previousEnd: karachiLocalToUtc(previousEndDateExclusive, SHIFT_END_HOUR),
+    start: reportingLocalToUtc(firstDay, SHIFT_START_HOUR),
+    end: reportingLocalToUtc(lastDay, SHIFT_END_HOUR),
+    previousStart: reportingLocalToUtc(previousFirstDay, SHIFT_START_HOUR),
+    previousEnd: reportingLocalToUtc(addDays(firstDay, -1), SHIFT_END_HOUR),
     startDate: formatDate(firstDay), endDate: formatDate(lastDay), endDateExclusive: formatDate(endDateExclusive),
     previousStartDate: formatDate(previousFirstDay), previousEndDateExclusive: formatDate(previousEndDateExclusive),
     dayCount, label: `${formatDate(firstDay)} – ${formatDate(lastDay)}`,

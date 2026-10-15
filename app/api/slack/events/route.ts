@@ -9,7 +9,7 @@ import { classifySlackEnvelope } from "@/lib/slack/event-routing";
 import { queueGeneralEvent } from "@/lib/auto-docks/attendance";
 import { reconcilePendingDays } from "@/lib/auto-docks/scheduler";
 import { FIRST_APPROVED_BUSINESS_DATE, GENERAL_CHANNEL_ID, latestClosedBusinessDate } from "@/lib/auto-docks/policy";
-import { operationalDateFor } from "@/lib/time-ranges";
+import { autoDockBusinessDateFor } from "@/lib/auto-docks/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     // durable queue remains available to cron without undoing Slack ingestion.
     const sourceTs=event.message?.ts ?? event.ts;
     if(sourceTs && /^\d+\.\d+$/.test(sourceTs)) {
-      const sourceDay=operationalDateFor(new Date(Number(sourceTs)*1000));
+      const sourceDay=autoDockBusinessDateFor(new Date(Number(sourceTs)*1000));
       if(sourceDay>=FIRST_APPROVED_BUSINESS_DATE && sourceDay<=latestClosedBusinessDate()) {
         try { await reconcilePendingDays(); }
         catch { console.error("[auto-dock] late activity reconciliation deferred; durable queue retained"); }

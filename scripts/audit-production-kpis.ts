@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 
 createRequire(import.meta.url)("@next/env").loadEnvConfig(process.cwd());
 
-const [{ sql }, { closeDb, getDb }, { resolveDateRange }, { occurredAt, operationalShiftFilter }] = await Promise.all([
+const [{ sql }, { closeDb, getDb }, { resolveDateRange, REPORTING_TIME_ZONE }, { occurredAt, operationalShiftFilter }] = await Promise.all([
   import("drizzle-orm"),
   import("@/lib/db/client"),
   import("@/lib/time-ranges"),
@@ -55,7 +55,7 @@ async function audit(names: string[], record: "sales" | "appointments" | "leads"
 }
 
 try {
-  console.log(`SELECTED PERIOD: ${week.label} (Asia/Karachi)`);
+  console.log(`SELECTED PERIOD: ${week.label} (${REPORTING_TIME_ZONE})`);
   console.log("CLOSERS");
   console.table(await audit(closers, "sales"));
   console.log("APPOINTMENT SETTERS");
@@ -66,7 +66,7 @@ try {
   console.log("CURRENT SALES EVIDENCE");
   console.table(rows(await db.execute(sql`
     select e.canonical_name employee,s.customer_name,s.package_name,s.amount,s.currency,
-      timezone('Asia/Karachi',s.occurred_at) occurred_at_karachi,sm.slack_ts
+      timezone(${REPORTING_TIME_ZONE},s.occurred_at) occurred_at_reporting,sm.slack_ts
     from sales s join employees e on e.id=s.employee_id join slack_messages sm on sm.id=s.slack_message_id
     where ${current("s.occurred_at")}
     order by s.occurred_at desc

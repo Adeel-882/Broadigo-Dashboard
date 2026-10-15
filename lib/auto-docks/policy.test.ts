@@ -1,7 +1,7 @@
 import {AUTO_DOCK_AMOUNTS} from "./policy";
 import { describe,expect,it } from "vitest";
 import { AUTO_DOCK_EMPLOYEE_OVERRIDES, businessWindow,evaluateAutoDockState,isCheckIn,latestClosedBusinessDate,OBSERVED_CHECK_IN_PHRASES,type EvaluationInput } from "./policy";
-import { operationalDateFor } from "../time-ranges";
+import { autoDockBusinessDateFor as operationalDateFor } from "./time";
 
 const base:EvaluationInput={employeeId:"normal",title:"Appointment Setter",active:true,membershipEligible:true,checkInFound:true,attendanceReliable:true,exempt:false,appointments:0,sales:0};
 describe("attendance-gated automatic docks",()=>{

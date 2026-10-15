@@ -2,7 +2,7 @@
 import { Activity,AlertTriangle,Check,CheckCircle2,CircleDollarSign,Database,Download,ExternalLink,History,Layers3,MessageSquareText,Settings2,ShieldCheck,Users,XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AutomaticDockAudit } from "./AutomaticDockAudit";
-import { OPERATIONAL_SHIFT_HUMAN_LABEL, operationalDateFor } from "@/lib/time-ranges";
+import { OPERATIONAL_SHIFT_HUMAN_LABEL, operationalDateFor, formatReportingTimestamp } from "@/lib/time-ranges";
 import type { Activity as ActivityRecord, DashboardData, TargetRecord } from "@/types/dashboard";
 
 export function DivisionsView({data,openDivision}:{data:DashboardData;openDivision:(name:string)=>void}){return <div className="view-stack"><PageHeading eyebrow="Operating structure" title="Divisions" copy="Each output keeps its own unit; revenue, appointments, leads and media activity are never combined."/><div className="division-grid division-page-grid">{data.divisions.map(d=><button className={`glass-card division-card ${d.accent}`} key={d.name} onClick={()=>openDivision(d.name)}><div className="division-top"><span>{d.eyebrow}</span><Layers3 size={17}/></div><h3>{d.name}</h3><div className="division-output-list">{d.outputs.length?d.outputs.map(output=><span key={output.label}><strong>{output.value}</strong><small>{output.label}</small></span>):<span><strong>0</strong><small>No recorded output</small></span>}</div></button>)}</div><section className="glass-card data-section"><div className="card-title"><div><p className="eyebrow">Role-specific measurement</p><h2>Team health</h2></div></div><TeamTable data={data}/></section></div>}
@@ -52,5 +52,5 @@ function TeamTable({data}:{data:DashboardData}){return <div className="team-tabl
 function PageHeading({eyebrow,title,copy,action}:{eyebrow:string;title:string;copy:string;action?:React.ReactNode}){return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{copy}</p></div>{action}</div>}
 function SummaryCard({icon:Icon,label,value,note,tone="neutral"}:{icon:React.ElementType;label:string;value:string;note:string;tone?:"neutral"|"positive"|"warning"|"negative"}){return <article className={`glass-card summary-card tone-${tone}`}><span><Icon size={17}/></span><p>{label}</p><strong>{value}</strong><small>{note}</small></article>}
 function Empty({text}:{text:string}){return <div className="empty-state"><strong>{text}</strong><p>Complete setup or choose another date range.</p></div>}
-function formatDate(value:string){return new Intl.DateTimeFormat("en-PK",{timeZone:"Asia/Karachi",dateStyle:"medium",timeStyle:"short"}).format(new Date(value))}
+function formatDate(value:string){return formatReportingTimestamp(new Date(value))}
 function exportCsv(name:string,rows:string[][]){const blob=new Blob([rows.map(row=>row.map(cell=>`"${cell.replaceAll('"','""')}"`).join(",")).join("\n")],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`${name}.csv`;a.click();URL.revokeObjectURL(url)}

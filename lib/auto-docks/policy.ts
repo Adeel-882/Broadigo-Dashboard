@@ -1,4 +1,4 @@
-import { operationalDateFor } from "@/lib/time-ranges";
+import { autoDockBusinessDateFor } from "./time";
 
 /** Explicit management approval. Never backdate financial creation. */
 export const FIRST_APPROVED_BUSINESS_DATE = "2026-10-16";
@@ -32,7 +32,7 @@ export function businessWindow(date: string) {
   return { start, end: new Date(start.getTime()+86_400_000) };
 }
 export function latestClosedBusinessDate(now = new Date()) {
-  const today = businessWindow(operationalDateFor(now));
+  const today = businessWindow(autoDockBusinessDateFor(now));
   return new Date(today.start.getTime()-86_400_000).toISOString().slice(0,10);
 }
 /** Only exact, reviewed production phrases may be configured. Empty means

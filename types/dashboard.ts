@@ -107,7 +107,7 @@ export interface EmployeeDetailData {
 
 export interface DashboardData {
   mode: "live" | "demo" | "disconnected";
-  timezone: "Asia/Karachi";
+  timezone: typeof import("@/lib/time-ranges").REPORTING_TIME_ZONE;
   period: PeriodKey;
   range: { start: string; end: string; startDate: string; endDate: string; label: string };
   generatedAt: string;

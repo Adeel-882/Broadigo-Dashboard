@@ -1,77 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { isWithinOperationalShift, operationalDateFor, resolveDateRange } from "./time-ranges";
+import { isWithinOperationalShift, operationalDateFor, resolveDateRange, formatReportingTimestamp } from "./time-ranges";
+import { autoDockBusinessDateFor } from "./auto-docks/time";
+import { latestClosedBusinessDate } from "./auto-docks/policy";
 
-const karachi = (value: string) => new Date(`${value}+05:00`);
-
-describe("Asia/Karachi operational shift dates", () => {
+describe("America/Chicago reporting", () => {
   it.each([
-    ["2026-08-18T18:59:00", "2026-08-18", false],
-    ["2026-08-18T19:00:00", "2026-08-18", true],
-    ["2026-08-18T23:59:00", "2026-08-18", true],
-    ["2026-08-19T00:00:00", "2026-08-18", true],
-    ["2026-08-19T03:59:59", "2026-08-18", true],
-    ["2026-08-19T04:59:59", "2026-08-18", true],
-    ["2026-08-19T05:00:00", "2026-08-19", false],
-  ])("maps %s to %s with shift eligibility %s", (value, date, eligible) => {
-    const timestamp = karachi(value);
-    expect(operationalDateFor(timestamp)).toBe(date);
-    expect(isWithinOperationalShift(timestamp)).toBe(eligible);
+    ["2026-03-07","2026-03-08","2026-03-07T15:00:00.000Z","2026-03-09T00:00:00.000Z"],
+    ["2026-10-31","2026-11-01","2026-10-31T14:00:00.000Z","2026-11-02T01:00:00.000Z"],
+  ])("resolves each endpoint independently across DST: %s–%s",(start,end,utcStart,utcEnd)=>{
+    const r=resolveDateRange("Custom Range",start,end);
+    expect(r.start.toISOString()).toBe(utcStart);
+    expect(r.end.toISOString()).toBe(utcEnd);
+    expect(r.dayCount).toBe(2);
   });
-
   it.each([
-    ["2026-09-01T04:59:59", "2026-08-31"],
-    ["2026-08-17T04:59:59", "2026-08-16"],
-    ["2027-01-01T04:59:59", "2026-12-31"],
-    ["2026-09-01T05:00:00", "2026-09-01"],
-    ["2026-08-17T05:00:00", "2026-08-17"],
-    ["2027-01-01T05:00:00", "2027-01-01"],
-  ])("handles month, week, and year boundary %s", (value, date) => {
-    expect(operationalDateFor(karachi(value))).toBe(date);
+    ["2026-10-12T08:59:59-05:00", false], ["2026-10-12T09:00:00-05:00", true],
+    ["2026-10-12T18:59:59-05:00", true], ["2026-10-12T19:00:00-05:00", false],
+    ["2026-12-12T08:59:59-06:00", false], ["2026-12-12T09:00:00-06:00", true],
+    ["2026-12-12T18:59:59-06:00", true], ["2026-12-12T19:00:00-06:00", false],
+  ])("uses inclusive start / exclusive end for %s", (stamp, included) => {
+    expect(isWithinOperationalShift(new Date(stamp))).toBe(included);
+    expect(operationalDateFor(new Date(stamp))).toBe(stamp.slice(0,10));
   });
-
-  it("keeps Today on the shift start date before 5 AM", () => {
-    const range = resolveDateRange("Today", undefined, undefined, karachi("2026-08-19T04:59:59"));
-    expect(range.startDate).toBe("2026-08-18");
-    expect(range.start.toISOString()).toBe("2026-08-18T14:00:00.000Z");
-    expect(range.end.toISOString()).toBe("2026-08-19T00:00:00.000Z");
-  });
-
-  it("moves Today to the current calendar date at 5 AM", () => {
-    const range = resolveDateRange("Today", undefined, undefined, karachi("2026-08-19T05:00:00"));
-    expect(range.startDate).toBe("2026-08-19");
-    expect(range.start.toISOString()).toBe("2026-08-19T14:00:00.000Z");
-    expect(range.end.toISOString()).toBe("2026-08-20T00:00:00.000Z");
-  });
-
-  it("groups sales on both sides of midnight under the shift start date", () => {
-    const sales = [karachi("2026-08-18T23:00:00"), karachi("2026-08-19T02:00:00")];
-    expect(sales.every(isWithinOperationalShift)).toBe(true);
-    expect(sales.map(operationalDateFor)).toEqual(["2026-08-18", "2026-08-18"]);
-  });
-
   it.each([
-    ["Today", "2026-08-19", "2026-08-19"], ["Yesterday", "2026-08-18", "2026-08-18"],
-    ["This Week", "2026-08-17", "2026-08-23"], ["Last Week", "2026-08-10", "2026-08-16"],
-    ["This Month", "2026-08-01", "2026-08-31"], ["Last Month", "2026-07-01", "2026-07-31"],
-  ] as const)("resolves %s by operational date", (period, startDate, endDate) => {
-    const range = resolveDateRange(period, undefined, undefined, karachi("2026-08-19T16:00:00"));
-    expect(range.startDate).toBe(startDate); expect(range.endDate).toBe(endDate);
+    ["2026-10-12", "14:00", "00:00"], ["2026-12-12", "15:00", "01:00"],
+    ["2026-03-07", "15:00", "01:00"], ["2026-03-08", "14:00", "00:00"],
+    ["2026-10-31", "14:00", "00:00"], ["2026-11-01", "15:00", "01:00"],
+  ])("resolves 09:00–19:00 on %s across CDT/CST transitions", (date, start, end) => {
+    const r=resolveDateRange("Custom Range",date,date);
+    expect(r.start.toISOString()).toBe(date+"T"+start+":00.000Z");
+    expect(r.end.toISOString().slice(11,16)).toBe(end);
+    expect(r.end.getTime()-r.start.getTime()).toBe(10*3600000);
+    expect(isWithinOperationalShift(r.start)).toBe(true);
+    expect(isWithinOperationalShift(r.end)).toBe(false);
   });
-
-  it("includes every requested custom operational date", () => {
-    const range = resolveDateRange("Custom Range", "2026-08-01", "2026-08-03");
-    expect(range.start.toISOString()).toBe("2026-08-01T14:00:00.000Z");
-    expect(range.end.toISOString()).toBe("2026-08-04T00:00:00.000Z");
-    expect(range.dayCount).toBe(3);
+  it("uses Central calendar today, even outside operating hours",()=>{
+    const now=new Date("2026-10-13T00:30:00Z"); // Oct13 PKT, Oct12 Central
+    expect(resolveDateRange("Today",undefined,undefined,now).startDate).toBe("2026-10-12");
+    expect(resolveDateRange("Yesterday",undefined,undefined,now).startDate).toBe("2026-10-11");
+    expect(operationalDateFor(new Date("2026-10-13T05:00:00Z"))).toBe("2026-10-13");
   });
-
+  it.each(["1791825674.548629","1791826997.534049","1791834869.713019"])("preserves Asif's Oct12 source %s",ts=>{
+    const instant=new Date(Number(ts)*1000);
+    const r=resolveDateRange("Custom Range","2026-10-12","2026-10-12");
+    expect(operationalDateFor(instant)).toBe("2026-10-12");
+    expect(isWithinOperationalShift(instant)).toBe(true);
+    expect(instant>=r.start&&instant<r.end).toBe(true);
+  });
+  it("formats evidence with the seasonal Central abbreviation",()=>{
+    expect(formatReportingTimestamp(new Date("2026-10-12T17:43:00Z"))).toContain("12:43 PM CDT");
+    expect(formatReportingTimestamp(new Date("2026-12-12T18:43:00Z"))).toContain("12:43 PM CST");
+  });
   it.each([
-    ["2026-08-17T04:59:59", "This Week", "2026-08-10", "2026-08-16"],
-    ["2026-09-01T04:59:59", "This Month", "2026-08-01", "2026-08-31"],
-    ["2027-01-01T04:59:59", "This Month", "2026-12-01", "2026-12-31"],
-  ] as const)("keeps %s inside the correct operational %s boundary", (now, period, startDate, endDate) => {
-    const range = resolveDateRange(period, undefined, undefined, karachi(now));
-    expect(range.startDate).toBe(startDate);
-    expect(range.endDate).toBe(endDate);
+    ["2026-11-01T05:30:00Z","2026-11-01"], ["2026-03-01T05:30:00Z","2026-02-28"],
+    ["2027-01-01T05:30:00Z","2026-12-31"],
+  ])("uses local month/year boundaries at %s",(stamp,date)=>expect(operationalDateFor(new Date(stamp))).toBe(date));
+  it.each(["2026-03-08T00:00:00Z","2026-11-01T00:00:00Z","2026-10-17T00:00:00Z"])("keeps automatic docks independent at %s",stamp=>{
+    const now=new Date(stamp);
+    expect(autoDockBusinessDateFor(now)).toBe(stamp.slice(0,10));
+    expect(latestClosedBusinessDate(now)).toBe(new Date(now.getTime()-86400000).toISOString().slice(0,10));
+    expect(operationalDateFor(now)).not.toBe(autoDockBusinessDateFor(now));
   });
 });
