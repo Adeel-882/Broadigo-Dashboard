@@ -1,6 +1,6 @@
 import {AUTO_DOCK_AMOUNTS} from "./policy";
 import { describe,expect,it } from "vitest";
-import { ATTENDANCE_BYPASS_CLOSERS, businessWindow,evaluateAutoDockState,isCheckIn,latestClosedBusinessDate,OBSERVED_CHECK_IN_PHRASES,type EvaluationInput } from "./policy";
+import { AUTO_DOCK_EMPLOYEE_OVERRIDES, businessWindow,evaluateAutoDockState,isCheckIn,latestClosedBusinessDate,OBSERVED_CHECK_IN_PHRASES,type EvaluationInput } from "./policy";
 import { operationalDateFor } from "../time-ranges";
 
 const base:EvaluationInput={employeeId:"normal",title:"Appointment Setter",active:true,membershipEligible:true,checkInFound:true,attendanceReliable:true,exempt:false,appointments:0,sales:0};
@@ -21,14 +21,23 @@ describe("attendance-gated automatic docks",()=>{
   it.each([true,false])("closer matrix present=%s",present=>{
     for(const sales of [0,1,3]){const state=evaluateAutoDockState({...base,title:"Closer",checkInFound:present,sales});expect(state.amount).toBe(present&&sales===0?AUTO_DOCK_AMOUNTS.closer_zero_sales:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
   });
-  it.each([...ATTENDANCE_BYPASS_CLOSERS])("exception %s is ALWAYS closer-only regardless of appointment activity",employeeId=>{
+  it.each([true,false])("Harvey is setter-only, ignores sales and bypasses attendance: check-in=%s",checkInFound=>{
+    for(const title of ["Hybrid Media","Closer","Appointment Setter"])for(const appointments of [0,1,5])for(const sales of [0,1,10]){
+      const result=evaluateAutoDockState({...base,employeeId:"03cfda43-9721-41e0-b7fe-60f40538aa29",title,checkInFound,appointments,sales});
+      expect(result.role).toBe("SETTER");expect(result.ruleCode).toBe("appointment_setter_zero_appointments");
+      expect(result.amount).toBe(appointments===0?3000:0);expect(result.attendanceRequired).toBe(false);
+      expect(result.attendanceStatus).toBe("BYPASSED");expect(result.decision).toBe(appointments===0?"DOCK":"ACTIVITY_RECORDED");
+    }
+  });
+  it("Dameon remains closer-only regardless of appointment activity",()=>{
+    const employeeId="d2bf73cc-c9f6-48a8-be72-61b827e39619";
     for(const checkInFound of [false,true])for(const sales of [0,1,2])for(const appointments of [0,5]){
       const result=evaluateAutoDockState({...base,employeeId,title:"Hybrid Media",checkInFound,sales,appointments});
       expect(result.ruleCode).toBe("closer_zero_sales");expect(result.amount).toBe(sales?0:AUTO_DOCK_AMOUNTS.closer_zero_sales);expect(result.attendanceRequired).toBe(false);
     }
   });
   it("skips leave, inactive membership, inactive employee and unverified history including exceptions",()=>{
-    for(const employeeId of ["normal",...ATTENDANCE_BYPASS_CLOSERS])for(const override of [{exempt:true},{active:false},{membershipEligible:false},{attendanceReliable:false}])expect(evaluateAutoDockState({...base,employeeId,...override}).amount).toBe(0);
+    for(const employeeId of ["normal",...Object.keys(AUTO_DOCK_EMPLOYEE_OVERRIDES)])for(const override of [{exempt:true},{active:false},{membershipEligible:false},{attendanceReliable:false}])expect(evaluateAutoDockState({...base,employeeId,...override}).amount).toBe(0);
   });
   it("late check-in creates expected state; late owned activity removes it",()=>{
     expect(evaluateAutoDockState({...base,checkInFound:false}).amount).toBe(0);

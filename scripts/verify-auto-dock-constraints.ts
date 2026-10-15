@@ -18,11 +18,16 @@ try{
       try{await tx.savepoint(async sp=>{await sp`insert into auto_dock_test(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${id},${date},${rule},${amount},'test','active','{}')`;});}catch(error){rejected=(error as {code?:string}).code==="23514";}
       assert.ok(rejected,"Database must reject Dameon setter rule and preactivation dates");
     }
+    const harveyId="03cfda43-9721-41e0-b7fe-60f40538aa29";
+    await tx`insert into auto_dock_test(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${harveyId},'2026-10-16','appointment_setter_zero_appointments',3000,'test','active','{}')`;
+    let harveyCloserRejected=false;
+    try{await tx.savepoint(async sp=>{await sp`insert into auto_dock_test(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${harveyId},'2026-10-16','closer_zero_sales',1500,'test','active','{}')`;});}catch(error){harveyCloserRejected=(error as {code?:string}).code==="23514";}
+    assert.ok(harveyCloserRejected,"Database must reject Harvey closer rule");
     const setterId="00000000-0000-4000-8000-000000000001";
     await tx`insert into auto_dock_test(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${setterId},'2026-10-16','appointment_setter_zero_appointments',${AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments},'test','active','{}')`;
     let wrongSetterRejected=false;
     try{await tx.savepoint(async sp=>{await sp`update auto_dock_test set amount=1500 where employee_id=${setterId}`;});}catch(error){wrongSetterRejected=(error as {code?:string}).code==="23514";}
     assert.ok(wrongSetterRejected,"Database must reject old Setter amount");
-    console.log("PASS: corrected Setter/Closer amounts, old amounts rejected, uniqueness, voiding, Dameon closer-only CHECK, preactivation CHECK. Temporary records only.");
+    console.log("PASS: corrected Setter/Closer amounts, old amounts rejected, uniqueness, voiding, Harvey setter-only and Dameon closer-only CHECKs, preactivation CHECK. Temporary records only.");
   });
 }finally{await db.end({timeout:5});}

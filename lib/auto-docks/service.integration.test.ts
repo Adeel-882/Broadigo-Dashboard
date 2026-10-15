@@ -12,6 +12,7 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("real PostgreSQL evaluator 
   let client:ReturnType<typeof postgres>;
   let setter:string;
   const dameon="d2bf73cc-c9f6-48a8-be72-61b827e39619";
+  const harvey="03cfda43-9721-41e0-b7fe-60f40538aa29";
   const now=new Date("2026-10-17T00:01:00Z");
   let baseline:string;
   beforeAll(async()=>{
@@ -41,6 +42,8 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("real PostgreSQL evaluator 
     let result=await evaluateBusinessDay("2026-10-16",true,now);
     expect(result.evaluations.find(e=>e.employeeId===setter)?.decision).toBe("SKIP_ABSENT");
     expect(result.evaluations.find(e=>e.employeeId===dameon)?.amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_sales);
+    expect(result.evaluations.find(e=>e.employeeId===harvey)).toMatchObject({role:"SETTER",ruleCode:"appointment_setter_zero_appointments",attendanceRequired:false,checkInFound:false,amount:3000});
+    expect((await client`select rule_code,amount from automatic_docks where employee_id=${harvey}`).map(r=>({rule:r.rule_code,amount:Number(r.amount)}))).toEqual([{rule:"appointment_setter_zero_appointments",amount:3000}]);
     await client`insert into attendance_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,source_at,raw_text,is_check_in) values('T098UDG2RED','C0980E2DWAK','1792159200.000001','U_TEST',${setter},'2026-10-16T14:00:00Z','check in',true)`;
     result=await evaluateBusinessDay("2026-10-16",true,now);
     expect(result.evaluations.find(e=>e.employeeId===setter)?.amount).toBe(AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments);
