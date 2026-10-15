@@ -39,13 +39,13 @@ export async function ingestSlackReactionEvent(payload: SlackReactionEventCallba
         eq(slackMessages.workspaceId, payload.team_id),
         eq(slackMessages.channelId, channel.id),
         eq(slackMessages.slackTs, event.item.ts),
-      )).limit(1);
+      )).for("update").limit(1);
     if (!message) return { status: "unknown-message" as const };
 
     const reactions = applyReactionEvent(message.reactions, { type: event.type, reaction: event.reaction, user: event.user });
     await tx.update(slackMessages).set({ reactions, reactionsSyncedAt: new Date() }).where(eq(slackMessages.id, message.id));
 
-    const eligibility = deriveLeadEligibility(reactions);
+    const eligibility = deriveLeadEligibility(reactions, Boolean(message.sourceUnavailableAt));
     const updated = await tx.update(leads)
       .set({ countsTowardKpi: eligibility.countsTowardKpi, exclusionReasons: eligibility.exclusionReasons })
       .where(eq(leads.slackMessageId, message.id))

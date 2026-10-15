@@ -125,6 +125,8 @@ export const slackMessages = pgTable("slack_messages", {
   // Current Slack reactions on the message, kept as raw evidence for KPI eligibility.
   reactions: jsonb("reactions").$type<Array<{ name: string; count?: number; users?: string[] }>>().notNull().default([]),
   reactionsSyncedAt: timestamp("reactions_synced_at", { withTimezone: true }),
+  // Tombstone observation time, NEVER the source/activity timestamp.
+  sourceUnavailableAt: timestamp("source_unavailable_at", { withTimezone: true }),
 }, (table) => [
   uniqueIndex("slack_message_workspace_channel_ts_unique").on(table.workspaceId, table.channelId, table.slackTs),
   index("slack_message_employee_time_idx").on(table.employeeId, table.postedAt),

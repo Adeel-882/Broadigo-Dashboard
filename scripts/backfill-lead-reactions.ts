@@ -99,7 +99,7 @@ try {
     console.log(`  Slack returned ${byTs.size} messages.`);
 
     const stored = await db.select({
-      id: slackMessages.id, slackTs: slackMessages.slackTs, reactions: slackMessages.reactions,
+      id: slackMessages.id, slackTs: slackMessages.slackTs, reactions: slackMessages.reactions, sourceUnavailableAt: slackMessages.sourceUnavailableAt,
     }).from(slackMessages).where(eq(slackMessages.channelId, channel.id));
 
     const leadRows = await db.select({
@@ -116,7 +116,7 @@ try {
 
       const reactionsChanged = reactionsFingerprint(message.reactions) !== reactionsFingerprint(current);
       const lead = leadByMessage.get(message.id);
-      const eligibility = deriveLeadEligibility(current);
+      const eligibility = deriveLeadEligibility(current, Boolean(message.sourceUnavailableAt));
       const eligibilityChanged = Boolean(lead)
         && (lead!.countsTowardKpi !== eligibility.countsTowardKpi || !sameReasons(lead!.exclusionReasons, eligibility.exclusionReasons));
 

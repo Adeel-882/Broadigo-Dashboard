@@ -7,6 +7,7 @@ export interface SlackMessageEvent {
   event_ts?: string;
   thread_ts?: string;
   subtype?: string;
+  deleted_ts?: string;
   message?: SlackMessageEvent;
   previous_message?: SlackMessageEvent;
 }

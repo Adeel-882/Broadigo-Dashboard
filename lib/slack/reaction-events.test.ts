@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state: {
   channel: { id: string; parserType: string; teamId: string | null } | null;
-  message: { id: string; reactions: Array<{ name: string; count?: number; users?: string[] }> } | null;
+  message: { id: string; sourceUnavailableAt?: Date; reactions: Array<{ name: string; count?: number; users?: string[] }> } | null;
   claimEvent: boolean;
   messageUpdates: Array<Record<string, unknown>>;
   leadUpdates: Array<Record<string, unknown>>;
@@ -15,6 +15,7 @@ function fakeTransaction() {
   const thenable = <T>(value: T) => ({
     from() { return this; },
     where() { return this; },
+    for() { return this; },
     limit() { return Promise.resolve(value); },
     then(resolve: (v: T) => unknown) { return Promise.resolve(value).then(resolve); },
   });
@@ -77,6 +78,16 @@ beforeEach(() => {
 });
 
 describe("live reaction ingestion", () => {
+  it("an Oct 13 reaction changes only eligibility of the Oct 2 parent, never owner/source date", async () => {
+    const parent={employeeId:'employee-a',slackTs:'1790958602.271949',occurredAt:new Date('2026-10-02T16:30:02.271Z')};
+    await ingestSlackReactionEvent(event({user:'employee-b',event_ts:'1791843228.130579',item:{type:'message',channel:'C-LEADS',ts:parent.slackTs}}));
+    expect(state.leadUpdates).toEqual([{countsTowardKpi:false,exclusionReasons:['X_REACTION']}]);
+    for(const update of [...state.leadUpdates,...state.messageUpdates])for(const key of ['employeeId','occurredAt','postedAt','slackTs'])expect(update).not.toHaveProperty(key);
+  });
+  it("reaction removal cannot revive a source removed from Slack", async () => {
+    state.message={id:'msg-1',sourceUnavailableAt:new Date(),reactions:[{name:'x',count:1,users:['UMGR']}]};
+    expect(await ingestSlackReactionEvent(event({type:'reaction_removed'}))).toMatchObject({countsTowardKpi:false,exclusionReasons:['SOURCE_UNAVAILABLE']});
+  });
   it("excludes the lead when :x: is added in the leads channel", async () => {
     const result = await ingestSlackReactionEvent(event());
     expect(result).toMatchObject({ status: "applied", countsTowardKpi: false, exclusionReasons: ["X_REACTION"] });

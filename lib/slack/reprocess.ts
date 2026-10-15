@@ -200,7 +200,7 @@ async function reprocessChannel(transaction: Database, channel: Channel, onlySla
       if (result.recordType === "APPOINTMENT") appointmentRows.push({ ...base, prospectName: value("prospectName"), phone: value("phone"), state: value("state"), scheduledAt: value("scheduledAt") ? new Date(value("scheduledAt")!) : null, originalTimezone: value("originalTimezone"), assignedPerson: value("assignedPerson"), scheduledText: value("scheduledText") });
       else if (result.recordType === "SALE") saleRows.push({ ...base, customerName: value("customerName"), phone: value("phone"), email: value("email"), packageName: value("packageName"), amount: result.values.amount == null ? null : String(result.values.amount), currency: value("currency") ?? "USD", state: value("state"), zipCodes: (result.values.zipCodes ?? []) as string[] });
       else if (result.recordType === "LEAD") {
-        const eligibility = deriveLeadEligibility(message.reactions);
+        const eligibility = deriveLeadEligibility(message.reactions, Boolean(message.sourceUnavailableAt));
         leadRows.push({ ...base, leadType: value("leadType"), contactName: value("contactName"), phone: value("phone"), email: value("email"), propertyType: value("propertyType"), state: value("state"), timeline: value("timeline"), details: (result.values.details ?? {}) as Record<string, string>, countsTowardKpi: eligibility.countsTowardKpi, exclusionReasons: eligibility.exclusionReasons });
       }
       else if (result.recordType === "DOCK" && result.values.amount != null && value("reason")) {

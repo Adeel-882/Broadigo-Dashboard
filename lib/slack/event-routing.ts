@@ -16,6 +16,8 @@ export function classifySlackEnvelope(payload: SlackEnvelope) {
     return {action:"reaction" as const};
   }
   if(payload.event.type!=="message") return {action:"ignore" as const,reason:"event-type"};
+  const message=payload.event as SlackMessageEvent;
+  if(message.subtype==="message_deleted" && message.channel==="C098C93DGTY" && /^\d+\.\d+$/.test(message.deleted_ts??""))return {action:"lead-deleted" as const};
   const reply=normalizeSlackThreadReplyEvent(payload.event as SlackMessageEvent);
   if(reply&&QUALIFICATION_CHANNELS.has(reply.channel))return {action:"appointment-disposition" as const};
   if(!normalizeSlackMessageEvent(payload.event as SlackMessageEvent))return {action:"ignore" as const,reason:"thread-or-message-subtype"};

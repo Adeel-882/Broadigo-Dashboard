@@ -16,7 +16,7 @@ export interface SlackReaction {
   users?: string[];
 }
 
-export type LeadExclusionReason = "X_REACTION" | "ARROW_LEFT_REACTION";
+export type LeadExclusionReason = "X_REACTION" | "ARROW_LEFT_REACTION" | "SOURCE_UNAVAILABLE";
 
 export interface LeadEligibility {
   countsTowardKpi: boolean;
@@ -45,7 +45,7 @@ export function isExcludingReaction(name: string) {
  * omits `count` on some payloads, so a listed reaction with no count is treated
  * as present rather than silently ignored.
  */
-export function deriveLeadEligibility(reactions: SlackReaction[] | null | undefined): LeadEligibility {
+export function deriveLeadEligibility(reactions: SlackReaction[] | null | undefined, sourceUnavailable = false): LeadEligibility {
   const reasons = new Set<LeadExclusionReason>();
   for (const reaction of reactions ?? []) {
     if (!reaction?.name) continue;
@@ -55,6 +55,7 @@ export function deriveLeadEligibility(reactions: SlackReaction[] | null | undefi
     if (reason) reasons.add(reason);
   }
   const exclusionReasons = [...EXCLUDING_REACTIONS.values()].filter((reason) => reasons.has(reason));
+  if (sourceUnavailable) exclusionReasons.push("SOURCE_UNAVAILABLE");
   return { countsTowardKpi: exclusionReasons.length === 0, exclusionReasons };
 }
 
@@ -102,7 +103,8 @@ export function applyReactionEvent(
 }
 
 export const leadExclusionLabel = (reasons: LeadExclusionReason[]) =>
-  reasons.includes("ARROW_LEFT_REACTION") && reasons.includes("X_REACTION") ? "Excluded — rejected and returned"
+  reasons.includes("SOURCE_UNAVAILABLE") ? "Excluded — source removed from Slack"
+    : reasons.includes("ARROW_LEFT_REACTION") && reasons.includes("X_REACTION") ? "Excluded — rejected and returned"
     : reasons.includes("ARROW_LEFT_REACTION") ? "Excluded — returned"
       : reasons.includes("X_REACTION") ? "Excluded — rejected"
         : "Counted";

@@ -1,4 +1,5 @@
 import { ingestSlackEvent } from "@/lib/slack/ingest";
+import { ingestLeadDeletion } from "@/lib/slack/lead-source-events";
 import { ingestAppointmentDispositionEvent } from "@/lib/slack/appointment-dispositions";
 import { ingestSlackReactionEvent } from "@/lib/slack/reaction-events";
 import { recordSlackEventOutcome } from "@/lib/slack/observability";
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     workspaceId: callback.team_id ?? null,
     slackChannelId: event?.channel ?? event?.item?.channel ?? null,
     slackUserId: event?.user ?? null,
-    slackTs: event?.ts ?? event?.item?.ts ?? null,
+    slackTs: event?.deleted_ts ?? event?.ts ?? event?.item?.ts ?? null,
   };
 
   if (event?.type === "message" && event.channel === GENERAL_CHANNEL_ID) {
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   try {
-    const outcome = routing.action === "reaction"
+    const outcome = routing.action === "lead-deleted" ? await ingestLeadDeletion(callback) : routing.action === "reaction"
       ? await ingestSlackReactionEvent(payload as unknown as SlackReactionEventCallback)
       : routing.action === "appointment-disposition"
         ? await ingestAppointmentDispositionEvent(callback)
