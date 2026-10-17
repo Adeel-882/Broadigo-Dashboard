@@ -5,6 +5,18 @@ const {autoDockDb,resultRows,evaluateBusinessDay}=await import("../lib/auto-dock
 const {closeDb}=await import("../lib/db/client");
 try {
   const db=autoDockDb();
+  const apiQueries=[
+    "select business_date,started_at,completed_at,status,summary,error from auto_dock_runs order by started_at desc limit 5",
+    "select distinct on(employee_id) employee_id,evidence,evaluated_at from auto_dock_evaluations where business_date='2026-10-16' order by employee_id,evaluated_at desc",
+    "select count(*) n from auto_dock_pending where business_date>='2026-10-16' and business_date<='2026-10-16'",
+    "select employee_id,rule_code,amount,status,void_reason,created_at,voided_at from automatic_docks where business_date='2026-10-16' order by created_at"
+  ];
+  console.log('API_READS',await db.transaction(async tx=>{
+    await tx.execute(sql`set transaction isolation level repeatable read read only`);
+    const counts=[];
+    for(const query of apiQueries)counts.push(resultRows(await tx.execute(sql.raw(query))).length);
+    return counts;
+  }));
   const audit=await evaluateBusinessDay("2026-10-16");
   const records=resultRows(await db.execute(sql`select d.*,e.canonical_name from automatic_docks d join employees e on e.id=d.employee_id where business_date='2026-10-16'`));
   const people=resultRows(await db.execute(sql`select id,job_title from employees`));
