@@ -46,7 +46,7 @@ export async function evaluateBusinessDay(date:string, apply=false, now=new Date
       if(apply){
         const previous=resultRows(await tx.execute(sql`select * from automatic_docks where business_date=${date}::date`));
         const payload=JSON.stringify(evaluations);
-        const retired=resultRows(await tx.execute(sql`update automatic_docks d set status='voided',voided_at=now(),void_reason='Reconciled: activity, attendance, exemption, or role changed',updated_at=now()
+        const retired=resultRows(await tx.execute(sql`update automatic_docks d set status='voided',voided_at=now(),void_reason=case when d.rule_code='closer_zero_sales' then 'Management rule change effective 2026-10-16: retired sales-based rule; personally posted calls and automatic exclusions now determine eligibility. See replacement evaluation.' else 'Reconciled: activity, attendance, exemption, or role changed' end,updated_at=now()
           where d.business_date=${date}::date and d.status='active' and not exists(
             select 1 from jsonb_array_elements(${payload}::jsonb) e where (e->>'employeeId')::uuid=d.employee_id and e->>'decision'='DOCK' and e->>'ruleCode'=d.rule_code)
           returning d.id`));
@@ -57,7 +57,8 @@ export async function evaluateBusinessDay(date:string, apply=false, now=new Date
         await tx.execute(sql`insert into automatic_docks(employee_id,business_date,rule_code,amount,reason,status,evidence)
           select (e->>'employeeId')::uuid,${date}::date,e->>'ruleCode',(e->>'amount')::numeric,e->>'reason','active',e
           from jsonb_array_elements(${payload}::jsonb) e where e->>'decision'='DOCK'
-          on conflict(employee_id,business_date,rule_code) do update set status='active',voided_at=null,void_reason=null,reason=excluded.reason,evidence=excluded.evidence,updated_at=now()`);
+          on conflict(employee_id,business_date,rule_code) do update set status='active',voided_at=null,void_reason=null,reason=excluded.reason,evidence=excluded.evidence,updated_at=now()
+          where automatic_docks.status is distinct from 'active' or automatic_docks.reason is distinct from excluded.reason or automatic_docks.evidence is distinct from excluded.evidence`);
         await tx.execute(sql`insert into auto_dock_evaluations(run_id,employee_id,business_date,dock_id,evidence)
           select ${String(run.id)}::uuid,(e->>'employeeId')::uuid,${date}::date,d.id,e
           from jsonb_array_elements(${payload}::jsonb) e left join automatic_docks d
