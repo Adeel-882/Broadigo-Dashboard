@@ -6,7 +6,7 @@ import { autoDockBusinessDateFor as operationalDateFor } from "./time";
 const base:EvaluationInput={employeeId:"normal",title:"Appointment Setter",active:true,membershipEligible:true,checkInFound:true,attendanceReliable:true,exempt:false,appointments:0,sales:0};
 describe("attendance-gated automatic docks",()=>{
   it("locks the corrected business amounts independently of shared config",()=>{
-    expect(AUTO_DOCK_AMOUNTS).toEqual({appointment_setter_zero_appointments:3000,closer_zero_sales:1500});
+    expect(AUTO_DOCK_AMOUNTS).toEqual({appointment_setter_zero_appointments:3000,closer_zero_sales:1500,closer_zero_calls:1500});
   });
   it("keeps manual and automatic records separate when totaling",()=>{
     const manual={source:"manual",amount:2000};
@@ -19,7 +19,7 @@ describe("attendance-gated automatic docks",()=>{
     for(const appointments of [0,1,4]){const state=evaluateAutoDockState({...base,checkInFound:present,appointments});expect(state.amount).toBe(present&&appointments===0?AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
   });
   it.each([true,false])("closer matrix present=%s",present=>{
-    for(const sales of [0,1,3]){const state=evaluateAutoDockState({...base,title:"Closer",checkInFound:present,sales});expect(state.amount).toBe(present&&sales===0?AUTO_DOCK_AMOUNTS.closer_zero_sales:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
+    for(const appointments of [0,1])for(const sales of [0,1,10]){const state=evaluateAutoDockState({...base,title:"Closer",checkInFound:present,sales,appointments});expect(state.amount).toBe(present&&appointments===0?AUTO_DOCK_AMOUNTS.closer_zero_calls:0);if(!present)expect(state.decision).toBe("SKIP_ABSENT");}
   });
   it.each([true,false])("Harvey is setter-only, ignores sales and bypasses attendance: check-in=%s",checkInFound=>{
     for(const title of ["Hybrid Media","Closer","Appointment Setter"])for(const appointments of [0,1,5])for(const sales of [0,1,10]){
@@ -29,11 +29,11 @@ describe("attendance-gated automatic docks",()=>{
       expect(result.attendanceStatus).toBe("BYPASSED");expect(result.decision).toBe(appointments===0?"DOCK":"ACTIVITY_RECORDED");
     }
   });
-  it("Dameon remains closer-only regardless of appointment activity",()=>{
+  it("Dameon never receives any rule, regardless of role, calls, sales or attendance",()=>{
     const employeeId="d2bf73cc-c9f6-48a8-be72-61b827e39619";
-    for(const checkInFound of [false,true])for(const sales of [0,1,2])for(const appointments of [0,5]){
-      const result=evaluateAutoDockState({...base,employeeId,title:"Hybrid Media",checkInFound,sales,appointments});
-      expect(result.ruleCode).toBe("closer_zero_sales");expect(result.amount).toBe(sales?0:AUTO_DOCK_AMOUNTS.closer_zero_sales);expect(result.attendanceRequired).toBe(false);
+    for(const title of ["Closer","Appointment Setter","Hybrid Media"])for(const checkInFound of [false,true])for(const sales of [0,1,10])for(const appointments of [0,5]){
+      const result=evaluateAutoDockState({...base,employeeId,title,checkInFound,sales,appointments});
+      expect(result.ruleCode).toBeNull();expect(result.amount).toBe(0);expect(result.decision).toBe("SKIP_EXCLUDED");expect(result.attendanceStatus).toBe("EXCLUDED");
     }
   });
   it("skips leave, inactive membership, inactive employee and unverified history including exceptions",()=>{
@@ -43,12 +43,12 @@ describe("attendance-gated automatic docks",()=>{
     expect(evaluateAutoDockState({...base,checkInFound:false}).amount).toBe(0);
     expect(evaluateAutoDockState(base).amount).toBe(AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments);
     expect(evaluateAutoDockState({...base,appointments:1}).amount).toBe(0);
-    expect(evaluateAutoDockState({...base,title:"Closer"}).amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_sales);
-    expect(evaluateAutoDockState({...base,title:"Closer",sales:1}).amount).toBe(0);
+    expect(evaluateAutoDockState({...base,title:"Closer"}).amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_calls);
+    expect(evaluateAutoDockState({...base,title:"Closer",appointments:1}).amount).toBe(0);
   });
   it("is deterministic across retries and ignores unrelated activity",()=>{
     expect(evaluateAutoDockState({...base,sales:5})).toEqual(evaluateAutoDockState({...base,sales:5}));
-    expect(evaluateAutoDockState({...base,title:"Closer",appointments:5}).amount).toBe(AUTO_DOCK_AMOUNTS.closer_zero_sales);
+    expect(evaluateAutoDockState({...base,title:"Closer",appointments:5}).amount).toBe(0);
     expect(evaluateAutoDockState({...base,sales:5}).amount).toBe(AUTO_DOCK_AMOUNTS.appointment_setter_zero_appointments);
   });
 });

@@ -1,84 +1,94 @@
 # Automatic inactivity docks
 
-This feature is separate from manual Slack docks and from targets/payroll.
+Separate from manual Slack docks, targets, payroll, and dashboard calendar filters.
 
-## Approved activation
+## Current prospective policy: posted_calls_v1
 
-- First business date: **2026-10-16**.
-- First window: October 16 05:00 → October 17 05:00, Asia/Karachi.
-- First eligible financial execution: **October 17 at 05:00** (00:00 UTC).
-- Earlier dates: audit only, never financial writes. Both service and database enforce the lower date boundary.
-- Full 24-hour 05:00–05:00 evaluation; existing 19:00–05:00 reporting logic is unchanged.
+| Employee | Attendance requirement | Zero personally posted calls | One or more |
+| --- | --- | --- | --- |
+| Normal Appointment Setter | Valid #general check-in | PKR 3,000 | No dock |
+| Normal Closer | Valid #general check-in | PKR 1,500 | No dock |
+| Harvey Benjamin | Attendance bypass | PKR 3,000 | No dock |
+| Dameon Wolfe (Head of Sales) | Not evaluated: completely excluded | No dock | No dock |
 
-## Attendance evidence and rules
+Normal absence skips inactivity evaluation. Approved leave/exemptions, active employee/membership requirements and reliable attendance coverage remain unchanged. Harvey's existing role override resolves him as Setter, independent of his stored Hybrid Media title; this does not change his formal role or memberships.
 
-The bot can read #general (`C0980E2DWAK`) after the user's October 15 invitation. Slack history did not expose a bot join event, so its exact join timestamp is unknown. History is accessible before activation, but management designated October 16 as the first reliable full day. Earlier missing check-ins are **UNKNOWN**, not established absence.
+Dameon's canonical ID is centralized in AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS, not name matching. Exclusion precedes attendance, role and activity evaluation. No check-in, call or sale totals are queried for him. He can still receive manual management docks.
 
-Observed messages: `Check in`, `checkin`, `Check in at 7`, `Check in at 7:00`, `Clocked in @ 7:15 pm.`, and the recurring typo `cheak in`. These reviewed phrases are matched exactly after case/whitespace/Slack emphasis normalization. `break`, `break off`, `off`, discussions, bot messages and thread replies are not attendance. No guessed `present`/`office` vocabulary.
+Amounts: appointment_setter_zero_appointments = 3000; closer_zero_calls = 1500. Sales count, revenue and target qualification have **no effect** on either new rule. Historical closer_zero_sales is retained only to read old evidence correctly, never assigned by the new evaluator.
 
-Slack author user ID resolves through existing workspace identities. A complete, successful paginated history snapshot is required before a day receives coverage. Failed, partial, or in-progress snapshots cannot authorize financial evaluation. Current Slack snapshots handle edits/deletions; old event payloads cannot overwrite newer evidence.
+## Call evidence
 
-Active Appointment Setter + check-in + zero owned structured appointments: **PKR 3,000**. Active Closer + check-in + zero structured sales: **PKR 1,500**. Normal absence: no inactivity dock. Approved per-day exemption: no dock.
+Count existing canonical structured appointments, not arbitrary Slack text. The existing ingestion/parser accepts valid top-level messages, rejecting replies, comments, reactions, files and chatter. Auto-dock activity joins the original parent slack_messages.slack_user_id to employee_slack_identities in the same workspace. It does **not** use appointment ownership or assigned_person to give the assignee credit. Existing appointment ownership and all dashboard KPIs are untouched.
 
-| Rule | Automatic dock |
-| --- | --- |
-| Present normal Appointment Setter, zero appointments | PKR 3,000 |
-| Present normal Closer, zero sales | PKR 1,500 |
-| Harvey Benjamin: Appointment Setter, attendance bypass, zero appointments | PKR 3,000 |
-| Dameon Wolfe: Closer, attendance bypass, zero sales | PKR 1,500 |
+Approved configured Slack IDs:
+- C098WNHNBR7: sales-development-general
+- C0B0P6P7FPG: broadigo-sale-development-general
 
-Harvey's sales count is ignored; one or more owned appointments means no automatic dock, with or without check-in. Dameon's appointments are ignored; one or more sales means no automatic dock, with or without check-in. All other eligibility and historical safeguards remain in effect.
+Use original parent posted_at within [business window start, end). Require PARSED canonical source and no source_unavailable_at. Scheduled meeting time, qualification replies, ingestion/update time, assigned closer and revenue are irrelevant. SQL EXISTS prevents identity joins from multiplying appointment counts.
 
-Amounts are centralized in `AUTO_DOCK_AMOUNTS` in `lib/auto-docks/policy.ts`; the UI and dry-run display the evaluated/stored amount. Migration 0008 corrects the database amount CHECK without weakening other safeguards. Migration 0007 retains the old values solely as immutable applied history. Production contained zero automatic financial rows at correction time, so no financial rows were rewritten.
+## Attendance and time (unchanged)
 
-Manual and automatic amounts remain separate: PKR 2,000 manual + PKR 3,000 Setter inactivity = PKR 5,000; PKR 2,000 manual + PKR 1,500 Closer inactivity = PKR 3,500. These are two records, never a merged dock.
+First approved financial business date remains October 16, 2026. Business window is **05:00–05:00 Asia/Karachi**, independent of full America/Chicago dashboard calendar filters. First approved execution was October 17 at 05:00 Karachi.
 
-Amount-correction verification (October 15): 0 automatic rows before/after; all 51 employee/day dry-run results for October 12–14 were identical. These dates remain UNKNOWN/audit-only, since the first reliable approved day has not ended yet. Corrected charge amounts were verified with the real evaluator in temporary PostgreSQL tables, not by creating historical financial docks. Fingerprints matched for appointments (1,690), sales (111 / $121,400), manual docks (234 sources / PKR675,750), recipients, employees (40), memberships (48), attendance evidence (134), coverage (3), settings and evaluation history. The original 2,157 leads also matched exactly; two additional live Slack leads arrived at 20:24:38 and 20:25:33 Karachi during testing. Typecheck, lint and build passed; 404 regular tests passed, plus 2 explicitly enabled database integration tests and the database constraint verification script.
+The reviewed #general phrases remain: Check in, checkin, Check in at 7, Check in at 7:00, Clocked in @ 7:15 pm., and cheak in. Existing exact normalization, top-level/user checks, coverage requirements and exemption behavior are unchanged. Unreliable coverage is UNKNOWN, never proof of absence.
 
-`AUTO_DOCK_EMPLOYEE_OVERRIDES` centralizes each canonical employee ID's role and attendance bypass independently. Harvey evaluates as **Setter-only**, Dameon as **Closer-only**. Harvey's existing canonical title is Hybrid Media; this automatic-dock override does not mutate formal roles/memberships. Migration 0009 replaces the old combined Closer-only CHECK with employee-specific constraints: Harvey cannot receive the closer rule and Dameon cannot receive the setter rule. It refuses to proceed if Harvey financial rows require reconciliation, rather than rewriting history. Applied migrations 0007/0008 remain immutable.
+Vercel cron remains 0 0 * * * UTC. Hobby scheduling can occur within the hour; the business-window boundary itself remains exact. No scheduling or attendance-classifier change is part of this policy update.
 
-Harvey-correction verification (October 15): production had zero automatic rows before and after migration 0009, so no financial correction was needed. Full row fingerprints remained identical for 1,691 appointments, 111 sales ($121,400), 2,159 leads, 234 manual dock sources, 291 recipients, employees, memberships, attendance evidence/coverage, settings and audit history. October 12–14 read-only evaluations changed only Harvey's role/rule/reason; historical dates still create no docks. Typecheck, lint and production build passed, with 405 regular tests and 2 explicitly enabled temporary-database integration tests passing. Temporary constraint tests accept Harvey Setter/3,000 and reject Harvey Closer/1,500 while retaining Dameon's Closer-only protection.
+## Cutover and preserved financial history
 
-Structured activity is joined to canonical configured reporting channels and attributed by the original parent Slack message timestamp. Appointment credit stays with the setter. A valid $0 sale counts as a sale. Scheduled call time, assigned closer, ingestion time, targets and revenue thresholds are irrelevant.
+Migration 0011 records calls_rule_effective_from as the latest of:
+1. the current approved automatic-dock business date at migration time;
+2. the day after the last completed financial run;
+3. the day after any existing automatic financial row;
+4. the original October 16 minimum.
 
-## Persistence and recovery
+This prevents backdating or mixing the new rule into a closed old-policy day. Dry runs may preview the new policy on an old date, but are not historical financial decisions. Applying an earlier date returns historicalPreserved without inserting/voiding/rewriting financial rows or evaluations. Database guards also reject changes to legacy financial rows, new pre-cutover rows, every new closer_zero_sales row and every new Dameon row.
 
-`automatic_docks` is distinct from `docks`/`dock_recipients`. Unique employee/day/rule prevents duplicates. Late qualifying activity voids rather than deletes automatic records; append-only evaluations and run summaries preserve the decision history. Manual docks are never modified.
+Production inspection before the update found one completed October 16 run and these active rows:
+- Dameon Wolfe: closer_zero_sales, PKR 1,500.
+- Phillip Stokes: closer_zero_sales, PKR 1,500.
+- Jason Harkins: appointment_setter_zero_appointments, PKR 3,000.
 
-Database triggers enqueue original source dates atomically with appointment/sale inserts, updates and deletes, including historical sync/reprocess. Relevant #general events enqueue a fresh attendance snapshot. Closed dates reconcile inline after relevant webhooks; failures leave durable work queued for cron. Daily execution also catches missed incomplete runs, up to three days per request. Retry the authenticated cron to drain a larger backlog. No background fire-and-forget writes.
+These remain historically truthful, including Dameon's existing financial decision. Removing it requires separate management approval; future exclusion is not retroactive cancellation. The expected cutover on October 17 is October 17, first completed new-policy window October 18 at 05:00 Karachi. Read the persisted cutoff rather than assuming it when rerunning deployment later.
 
-`GET /api/cron/auto-docks` requires `Authorization: Bearer <CRON_SECRET>`. The proxy bypass is exact-path only; the route verifies its own secret. Vercel schedule: `0 0 * * *` (UTC). Vercel scheduling is not an exact-second guarantee; account plan timing limits still apply. A failed request returns 500 and retains queued dates; Vercel does not guarantee automatic retries. Run the protected endpoint again or let the next daily run catch up.
+## Idempotency and late evidence
 
-`GET /api/auto-docks?date=YYYY-MM-DD` is session-authenticated and read-only. Docks shows AUTO/System records, daily audit evidence, latest run, pending dates, and per-employee decisions. Voided automatic rows are excluded from totals but retained in storage. There is no public exemption/write endpoint.
+Unique employee/business_date/rule_code remains unchanged. New Closer rows use closer_zero_calls, never rename or reuse closer_zero_sales with a different meaning.
 
-The production account was verified as **Hobby** on October 15. Its cron timing is within the scheduled hour, so the first invocation may be **05:00–05:59 on October 17**, not precisely 05:00. The business window still ends exactly at 05:00. A plan/scheduler change is required for tighter scheduling; no paid account change was made.
+The appointment trigger queues original source business dates on insert/update/delete, including sync/reprocess. The sales trigger is removed; normal sales ingestion remains unchanged. Late personally posted calls void new-policy automatic docks; losing the only valid call makes the same unique record active again. Void/audit history remains intact. Late check-ins/exemptions still reconcile prospective days. Old-policy financial days are frozen pending explicit review.
 
-## Operator commands
+A narrow call-deletion webhook branch marks only existing canonical appointment sources in the two approved channels unavailable, retaining both raw and structured records. A source-change trigger queues parser-status, availability, author and source-time changes, covering invalidating edits that do not update the appointment row. Replies cannot match a canonical appointment parent. No sales or lead deletion behavior is changed.
 
+The migration adds a settings cutoff column, expands rule/amount CHECKs, adds a financial-history/exclusion write guard and narrows only the automatic-dock activity trigger. It never updates manual or existing automatic financial records.
+
+## Audit UI and CLI
+
+Current rule evidence displays Attendance, Calls posted, Rule/Decision, amount and business window. Dameon displays EXCLUDED / Not evaluated. Historical closer_zero_sales evidence retains its old sales label; do not rewrite it into call evidence. The automatic evidence drawer labels current reasons “No call posted during business day”, applied by System.
+
+GET /api/auto-docks remains authenticated/read-only. GET /api/cron/auto-docks still requires the configured scheduler bearer secret. No new public write route.
+
+Read-only policy preview:
 ```powershell
-# No financial writes. Snapshot flag imports attendance evidence only.
-npx tsx scripts/auto-docks.ts --date 2026-10-14 --sync-attendance
-
-# Exact approved dates and reviewed phrases, initially disabled.
-npx tsx scripts/auto-docks.ts --configure
-# Enable only after verification. Completion and coverage guards still apply.
-npx tsx scripts/auto-docks.ts --enable
-
-# Retry one completed approved day (requires complete attendance coverage).
-npx tsx scripts/auto-docks.ts --date 2026-10-16 --sync-attendance --apply
-
-# Minimal approved-leave exception. UUID must be an existing employee.
-npx tsx scripts/auto-docks.ts --date 2026-10-16 --exempt --employee EMPLOYEE_UUID --reason "Approved leave"
+npx tsx scripts/auto-docks.ts --date 2026-10-17
 ```
 
-Exemptions require database/operator access, not the shared office login. Reconcile after setting an exemption on an already-evaluated day. Optional Slack summaries are intentionally not implemented, avoiding parser feedback/duplicate manual docks.
+Existing --sync-attendance imports attendance evidence; --apply performs guarded financial evaluation and is not needed to verify this change. Do not use --configure/--enable to reset settings during the rule migration.
 
 ## Verification
 
-October 12–14 production dry runs retain UNKNOWN historical reliability and create zero financial docks. Observed cases include Caleb check-in + two appointments (Oct13/14); Jordan check-in + zero appointments (Oct13/14); Zack check-in + one sale (Oct13); Phillip check-in + zero sales (Oct13); Dameon two sales (Oct12). A missing historical check-in is not proof of absence.
+- Unit matrices cover Setter/Closer presence, personal calls, sales irrelevance, exemptions, Harvey bypass, and all Dameon combinations.
+- Opt-in service.integration.test.ts applies migration DDL and the real evaluator to session-temporary tables/functions only, preserving production financial fingerprints.
+- Integration covers old-rule preservation; source author rather than structured owner/assignee; both approved call channels; source-time rather than future scheduled_at; late calls, deletion/reactivation and uniqueness; sales insert/edit/delete non-queueing; new Dameon write rejection.
+- scripts/verify-auto-dock-constraints.ts verifies prospective rule/amount checks and exclusions in a temporary clone after migration.
+- Normal full test run skips explicit database integration tests; run them separately with AUTO_DOCK_DB_TEST=1.
 
-Baseline after migration/attendance audits: 233 manual sources, PKR672,750 recipient-expanded manual total, 1,689 appointments, 111 sales, $121,400 revenue, 2,156 leads, 40 employees, 48 memberships. No financial automatic records created during historical audits.
+## Production verification — October 17, 2026
 
-During verification an independent live Slack manual dock arrived at 2026-10-15 19:15:27 Asia/Karachi (source `1792073727.014489`), imported one second later: PKR2,000 for three recipients. This explains the final 234 manual sources / PKR678,750 total; it was not an automatic write. Other baseline totals remained unchanged. All six dashboard presets and Caleb/Dameon/Zack employee-detail queries loaded successfully.
+Migration 0011 persisted calls_rule_effective_from = 2026-10-17. No financial rows were inserted, voided or rewritten. Full before/after fingerprints matched for automatic_docks (3), evaluations (17), runs (1), manual sources (239), recipients (298), appointments (1,724), sales (112), leads (2,207), employees (40), memberships (48), targets (9), attendance messages (177) and coverage (4). Recipient-expanded manual total remained PKR 693,250; sales revenue remained USD 121,900.
 
-`service.integration.test.ts` explicitly opted in with `AUTO_DOCK_DB_TEST=1` executes the actual evaluator against session-temporary clones. It verifies late check-ins, idempotency, assigned-closer non-credit, late appointment and $0 sale voiding, date guards, audit rows, and unchanged production counts. Normal test runs skip this network-dependent test. `scripts/verify-auto-dock-constraints.ts` separately verifies PostgreSQL uniqueness and CHECK constraints in a temporary clone.
+October 16 new-policy preview (dry-run only, not a rewritten decision): Phillip present/0 posted calls → 1,500; Jason present/0 → 3,000; Harvey bypass/1 → 0; Caleb present/2 → 0; Dameon excluded/not evaluated → 0. Existing October 16 financial rows still retain their original rules and amounts.
+
+October 17 prospective preview: incomplete coverage → SKIP_UNRELIABLE; Dameon → SKIP_EXCLUDED. No absence or financial conclusion was inferred from an unfinished day. First new-policy completion is October 18 at 05:00 Karachi, subject to unchanged cron timing and coverage checks.
+
+Verification: typecheck/lint, 429 regular tests, 2 opted-in temporary-PostgreSQL integration tests, separate temporary constraint checks, and production build. The new-rule scenarios were tested without making production financial decisions.

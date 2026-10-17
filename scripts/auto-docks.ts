@@ -28,7 +28,7 @@ try {
       if(args.includes("--sync-attendance"))console.log("Attendance snapshot",await syncAttendanceDay(date));
       const audit=await evaluateBusinessDay(date,args.includes("--apply"));
       console.log(JSON.stringify({...audit,evaluations:undefined}));
-      console.table(audit.evaluations.map(e=>({employee:e.employee,role:e.role,attendance:e.attendanceStatus,observedCheckIn:e.checkInFound,bypass:!e.attendanceRequired,appointments:e.appointments,sales:e.sales,decision:e.decision,amount:e.amount})));
+      console.table(audit.evaluations.map(e=>({employee:e.employee,role:e.role,attendance:e.attendanceStatus,observedCheckIn:e.checkInFound,bypass:e.attendanceStatus==="BYPASSED",callsPosted:e.decision==="SKIP_EXCLUDED"?"Not evaluated":e.appointments,rule:e.ruleCode,excluded:e.decision==="SKIP_EXCLUDED",decision:e.decision,amount:e.amount})));
     }
   }
   console.log("RECONCILIATION",JSON.stringify(resultRows(await autoDockDb().execute(sql`select (select count(*) from docks) manual_sources,(select sum(d.amount*greatest(1,(select count(*) from dock_recipients dr where dr.dock_id=d.id))) from docks d) manual_total,(select count(*) from appointments) appointments,(select count(*) from sales) sales,(select sum(amount) from sales) revenue,(select count(*) from leads) leads,(select count(*) from employees) employees,(select count(*) from employee_team_memberships) memberships,(select count(*) from automatic_docks) automatic_records`))));

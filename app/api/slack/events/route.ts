@@ -8,6 +8,7 @@ import type { SlackEnvelope, SlackEventCallback, SlackMessageEvent, SlackReactio
 import { classifySlackEnvelope } from "@/lib/slack/event-routing";
 import { queueGeneralEvent } from "@/lib/auto-docks/attendance";
 import { reconcilePendingDays } from "@/lib/auto-docks/scheduler";
+import { ingestAutoDockCallDeletion } from "@/lib/auto-docks/call-events";
 import { FIRST_APPROVED_BUSINESS_DATE, GENERAL_CHANNEL_ID, latestClosedBusinessDate } from "@/lib/auto-docks/policy";
 import { autoDockBusinessDateFor } from "@/lib/auto-docks/time";
 
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   try {
-    const outcome = routing.action === "lead-deleted" ? await ingestLeadDeletion(callback) : routing.action === "reaction"
+    const outcome = routing.action === "auto-dock-call-deleted" ? await ingestAutoDockCallDeletion(callback) : routing.action === "lead-deleted" ? await ingestLeadDeletion(callback) : routing.action === "reaction"
       ? await ingestSlackReactionEvent(payload as unknown as SlackReactionEventCallback)
       : routing.action === "appointment-disposition"
         ? await ingestAppointmentDispositionEvent(callback)
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
     // Structured writes enqueue their original business day in the SAME DB
     // transaction via triggers. Reconcile closed days inline; on failure the
     // durable queue remains available to cron without undoing Slack ingestion.
-    const sourceTs=event.message?.ts ?? event.ts;
+    const sourceTs=routing.action==="auto-dock-call-deleted" ? event.deleted_ts : event.message?.ts ?? event.ts;
     if(sourceTs && /^\d+\.\d+$/.test(sourceTs)) {
       const sourceDay=autoDockBusinessDateFor(new Date(Number(sourceTs)*1000));
       if(sourceDay>=FIRST_APPROVED_BUSINESS_DATE && sourceDay<=latestClosedBusinessDate()) {

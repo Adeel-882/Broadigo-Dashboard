@@ -220,6 +220,7 @@ export const autoDockSettings = pgTable("auto_dock_settings", {
   id: integer("id").primaryKey(), enabled: boolean("enabled").notNull().default(false),
   workspaceId: text("workspace_id").notNull(), generalChannelId: text("general_channel_id").notNull(),
   attendanceReliableFrom: date("attendance_reliable_from"), effectiveFrom: date("effective_from"),
+  callsRuleEffectiveFrom: date("calls_rule_effective_from").notNull(),
   approvedCheckInPhrases: jsonb("approved_check_in_phrases").$type<string[]>().notNull().default([]),
   approvedAt: timestamp("approved_at",{withTimezone:true}), updatedAt: timestamp("updated_at",{withTimezone:true}).notNull().defaultNow(),
 });
