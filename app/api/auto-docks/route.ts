@@ -20,7 +20,7 @@ export async function GET(request:Request){
       const runs=await tx.execute(sql`select business_date,started_at,completed_at,status,summary,error from auto_dock_runs order by started_at desc limit 5`);
       const evaluations=await tx.execute(sql`select distinct on(business_date,employee_id) business_date::text,employee_id,evidence,evaluated_at from auto_dock_evaluations where business_date>=${from}::date and business_date<=${to}::date order by business_date desc,employee_id,evaluated_at desc`);
       const pending=await tx.execute(sql`select count(*) n from auto_dock_pending where business_date>=${settings.effectiveFrom}::date and business_date<=${latestClosedBusinessDate()}::date`);
-      const docks=await tx.execute(sql`select business_date::text,employee_id,rule_code,amount,status,void_reason,created_at,voided_at from automatic_docks where business_date>=${from}::date and business_date<=${to}::date order by created_at`);
+      const docks=await tx.execute(sql`select d.id,d.business_date::text,d.employee_id,d.rule_code,d.amount,d.system_amount,d.status,d.void_reason,d.created_at,d.voided_at,d.override_type,d.override_reason,d.edited_by,d.edited_at,(select coalesce(jsonb_agg(jsonb_build_object('action',h.action,'old_amount',h.old_amount::text,'new_amount',h.new_amount::text,'reason',h.reason,'actor',h.actor,'created_at',h.created_at) order by h.created_at desc),'[]') from auto_dock_edit_history h where h.dock_id=d.id) edit_history from effective_automatic_docks d where d.business_date>=${from}::date and d.business_date<=${to}::date order by d.created_at`);
       return [runs,evaluations,pending,docks];
     });
     const evaluated=new Set(resultRows(evaluations).map(r=>String(r.business_date)));

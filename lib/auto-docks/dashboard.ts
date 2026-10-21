@@ -3,7 +3,7 @@ import type { DockRecord } from "@/types/dashboard";
 import { autoDockDb, resultRows } from "./service";
 
 export async function automaticDockRecords(startDate:string,endDate:string,employeeId?:string):Promise<DockRecord[]> {
-  const records=resultRows(await autoDockDb().execute(sql`select d.*,e.canonical_name from automatic_docks d join employees e on e.id=d.employee_id where d.status='active' and d.business_date>=${startDate}::date and d.business_date<=${endDate}::date ${employeeId?sql`and d.employee_id=${employeeId}::uuid`:sql``} order by d.business_date desc,e.canonical_name`));
+  const records=resultRows(await autoDockDb().execute(sql`select d.*,e.canonical_name from effective_automatic_docks d join employees e on e.id=d.employee_id where d.status='active' and d.business_date>=${startDate}::date and d.business_date<=${endDate}::date ${employeeId?sql`and d.employee_id=${employeeId}::uuid`:sql``} order by d.business_date desc,e.canonical_name`));
   return records.map(r=>{
     const evidence=r.evidence as {attendanceStatus:string;appointments:number;sales:number;checkIns:Array<{channel:string;ts:string}>;windowStart:string;windowEnd:string};
     const date=String(r.business_date),employee=String(r.canonical_name),id=`auto:${r.id}`;

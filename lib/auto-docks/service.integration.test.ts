@@ -5,6 +5,7 @@ import {drizzle} from "drizzle-orm/postgres-js";
 const holder=vi.hoisted(()=>({db:undefined as unknown}));
 vi.mock("@/lib/db/client",()=>({getDb:()=>holder.db}));
 import {evaluateBusinessDay} from "./service";
+import {editAutomaticDock} from './edit-service';
 
 // Every writable relation/function is session-temporary; production is read-only.
 describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in temporary PostgreSQL tables",()=>{
@@ -13,12 +14,13 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
   beforeAll(async()=>{
     process.loadEnvFile(".env.local");
     db=postgres(process.env.DATABASE_URL!,{max:1,prepare:false,idle_timeout:0,max_lifetime:0});
-    for(const name of ["auto_dock_settings","attendance_coverage","attendance_messages","automatic_docks","auto_dock_runs","auto_dock_evaluations","auto_dock_exemptions","auto_dock_pending","appointments","sales","slack_messages","slack_channels"]){
+    for(const name of ["employees","auto_dock_settings","attendance_coverage","attendance_messages","automatic_docks","auto_dock_runs","auto_dock_evaluations","auto_dock_exemptions","auto_dock_pending","appointments","sales","slack_messages","slack_channels"]){
       await db.unsafe(`create temporary table ${name} (like public.${name} including all)`);
       expect((await db`select relpersistence from pg_class where oid=to_regclass(${name})`)[0].relpersistence).toBe("t");
     }
     baseline=JSON.stringify(await db`select (select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.docks d) manual,(select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.automatic_docks d) automatic`);
     await db`insert into auto_dock_settings select * from public.auto_dock_settings`;
+    await db`insert into employees select * from public.employees`;
     await db`insert into slack_channels select * from public.slack_channels`;
     await db`insert into slack_channels(workspace_id,slack_channel_id,name,parser_type) values('T098UDG2RED','C0BADNJL14L','sdg-lhub-general','leadsedge-appointment') on conflict do nothing`;
     await db`insert into automatic_docks(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${dameon},'2026-10-16','closer_zero_sales',1500,'Historical reason','active','{}')`;
@@ -28,6 +30,8 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     await db.begin(async tx=>{await tx.unsafe(migration);});
     const third=readFileSync('drizzle/0013_auto_dock_third_channel.sql','utf8').replaceAll('CREATE TABLE ','CREATE TEMPORARY TABLE ').replaceAll('FUNCTION guard_auto_dock_call_coverage()','FUNCTION pg_temp.guard_auto_dock_call_coverage()').replaceAll('FUNCTION queue_auto_dock_activity()','FUNCTION pg_temp.queue_auto_dock_activity()').replaceAll('FUNCTION queue_auto_dock_source_change()','FUNCTION pg_temp.queue_auto_dock_source_change()');
     await db.begin(async tx=>{await tx.unsafe(third);});
+    const management=readFileSync('drizzle/0014_auto_dock_management_overrides.sql','utf8').replaceAll('CREATE TABLE ','CREATE TEMPORARY TABLE ').replaceAll('CREATE VIEW ','CREATE TEMPORARY VIEW ').replaceAll('FUNCTION preserve_auto_dock_edit_history()','FUNCTION pg_temp.preserve_auto_dock_edit_history()');
+    await db.begin(async tx=>{await tx.unsafe(management);});
     await db`insert into auto_dock_call_coverage select d::date,'T098UDG2RED',channel_id,now(),0 from auto_dock_call_sources cross join unnest(array['2026-10-16','2026-10-17']) d`;
     await db`update auto_dock_settings set calls_rule_effective_from=${day}`;
     await db`create trigger test_appointment after insert or update or delete on pg_temp.appointments for each row execute function pg_temp.queue_auto_dock_activity()`;
@@ -130,6 +134,31 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     await db`delete from auto_dock_call_coverage where channel_id='C0BADNJL14L' and business_date=${day}`;
     await expect(evaluateBusinessDay(day,true,now)).rejects.toThrow(/coverage/);
   },60000);
+  it('preserves amount/deletion overrides through reconciliation and never edits manual docks',async()=>{
+    await db`insert into auto_dock_call_coverage values(${day},'T098UDG2RED','C0BADNJL14L',now(),0)`;
+    await db`delete from appointments`;
+    await evaluateBusinessDay(day,true,now);
+    const [setterDock]=await db`select * from automatic_docks where employee_id=${setter} and business_date=${day}`;
+    const [closerDock]=await db`select * from automatic_docks where employee_id=${closer} and business_date=${day}`;
+    const actor={actor:'integration-fixture@example.test',session:'non-secret-fixture-fingerprint'};
+    await editAutomaticDock(String(setterDock.id),'amount',{amount:'2500',expectedAmount:'3000.00',reason:'Approved fixture correction'},actor);
+    expect((await db`select amount,system_amount,status from effective_automatic_docks where id=${setterDock.id}`)[0]).toMatchObject({amount:'2500.00',system_amount:'3000.00',status:'active'});
+    expect((await db`select old_amount,new_amount,actor,reason from auto_dock_edit_history where dock_id=${setterDock.id}`)[0]).toMatchObject({old_amount:'3000.00',new_amount:'2500.00',actor:actor.actor,reason:'Approved fixture correction'});
+    await expect(editAutomaticDock(String(setterDock.id),'amount',{amount:'2000',expectedAmount:'3000.00',reason:''},actor)).rejects.toThrow('amount changed');
+    await editAutomaticDock(String(setterDock.id),'amount',{amount:'2000',expectedAmount:'2500.00',reason:''},actor);
+    await editAutomaticDock(String(closerDock.id),'deleted',{expectedAmount:'1500.00',reason:'Approved fixture deletion'},actor);
+    const again=await evaluateBusinessDay(day,true,now);
+    expect(again.created).toBe(0);
+    expect(again.evaluations.find(e=>e.employeeId===setter)?.amount).toBe(3000);
+    expect((await db`select amount,system_amount,status from effective_automatic_docks where id=${setterDock.id}`)[0]).toMatchObject({amount:'2000.00',system_amount:'3000.00',status:'active'});
+    expect((await db`select amount,status from effective_automatic_docks where id=${closerDock.id}`)[0]).toMatchObject({amount:'0',status:'admin_deleted'});
+    expect(Number((await db`select count(*) n from automatic_docks where employee_id=${closer} and business_date=${day}`)[0].n)).toBe(1);
+    expect(Number((await db`select coalesce(sum(amount),0) n from effective_automatic_docks where id in (${setterDock.id},${closerDock.id}) and status='active'`)[0].n)).toBe(2000);
+    const [manual]=await db`select id from public.docks limit 1`;
+    await expect(editAutomaticDock(String(manual.id),'amount',{amount:'1000',expectedAmount:'1500.00',reason:''},actor)).rejects.toThrow('not found');
+    await expect(db`delete from auto_dock_edit_history`).rejects.toThrow('append-only');
+    expect(Number((await db`select count(*) n from auto_dock_edit_history`)[0].n)).toBe(3);
+  },120000);
   it("refuses preactivation and incomplete dates",async()=>{
     await expect(evaluateBusinessDay("2026-10-15",true,now)).rejects.toThrow(/approved/);
     await expect(evaluateBusinessDay("2026-10-18",true,now)).rejects.toThrow(/incomplete/);

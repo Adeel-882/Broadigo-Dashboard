@@ -1,4 +1,15 @@
 .audit { min-width: 0; }
+.editor { color:var(--le-text-primary,#fff); background:var(--le-surface-1,#131316); border:1px solid var(--le-border,#444); border-radius:16px; width:min(480px,calc(100vw - 32px)); max-height:85vh; overflow:auto; padding:24px; }
+.editor::backdrop { background:rgba(0,0,0,.75); }
+.editor h2 { margin:0 0 20px; }
+.editor label { display:grid; gap:8px; margin:16px 0; }
+.editor input,.editor textarea,.editor button { color:inherit; background:var(--le-surface-2,#18181c); border:1px solid var(--le-border,#444); border-radius:8px; padding:10px; min-height:44px; }
+.editor input:focus-visible,.editor textarea:focus-visible,.editor button:focus-visible { outline:2px solid #ff3e32; outline-offset:2px; }
+.editor dd { margin:0 0 12px; }
+.editor dt { color:var(--le-text-secondary,#b9b9bf); font-size:.8rem; }
+.actions { display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end; margin-top:20px; }
+.actions .destructive { color:#ffb3ac; border-color:#85423c; margin-right:auto; }
+.editor button:disabled { opacity:.5; }
 .filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
 .filters label { display:grid; gap:6px; }
 .audit select,.filters input,.filters button { background:var(--le-surface-1,#131316); color:inherit; border:1px solid var(--le-border,#444); padding:10px; border-radius:8px; min-height:44px; }
