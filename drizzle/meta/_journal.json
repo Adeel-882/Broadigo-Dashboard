@@ -56,6 +56,7 @@
     { "idx": 9, "version": "7", "when": 1792100000002, "tag": "0009_harvey_setter_auto_dock", "breakpoints": true },
     { "idx": 10, "version": "7", "when": 1792100000003, "tag": "0010_lead_source_lifecycle", "breakpoints": true },
     { "idx": 11, "version": "7", "when": 1792100000004, "tag": "0011_auto_dock_posted_calls", "breakpoints": true },
-    { "idx": 12, "version": "7", "when": 1792100000005, "tag": "0012_authorized_oct16_call_policy", "breakpoints": true }
+    { "idx": 12, "version": "7", "when": 1792100000005, "tag": "0012_authorized_oct16_call_policy", "breakpoints": true },
+    { "idx": 13, "version": "7", "when": 1792100000006, "tag": "0013_auto_dock_third_channel", "breakpoints": true }
   ]
 }

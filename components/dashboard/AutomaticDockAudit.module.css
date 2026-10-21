@@ -1,4 +1,8 @@
 .audit { min-width: 0; }
+.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+.filters label { display:grid; gap:6px; }
+.audit select,.filters input,.filters button { background:var(--le-surface-1,#131316); color:inherit; border:1px solid var(--le-border,#444); padding:10px; border-radius:8px; min-height:44px; }
+.filters button:disabled { opacity:.45; cursor:not-allowed; }
 .meta { color: var(--le-text-secondary,#b9b9bf); font-size: .85rem; margin: 12px 0; }
 .summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 12px; margin: 20px 0; }
 .summary > div { border: 1px solid var(--le-border,#333); border-radius: 10px; padding: 14px; }

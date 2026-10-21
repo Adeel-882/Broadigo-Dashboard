@@ -9,7 +9,7 @@ export const AUTO_DOCK_AMOUNTS = {
   closer_zero_calls: 1500,
 } as const;
 // Exact IDs already configured in production; names are display labels only.
-export const AUTO_DOCK_CALL_CHANNEL_IDS = ["C098WNHNBR7", "C0B0P6P7FPG"] as const;
+export const AUTO_DOCK_CALL_CHANNEL_IDS = ["C098WNHNBR7", "C0B0P6P7FPG", "C0BADNJL14L"] as const;
 export const AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS: readonly string[] = ["d2bf73cc-c9f6-48a8-be72-61b827e39619"]; // Dameon Wolfe
 export const isAutoDockExcluded = (id: string) => AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS.includes(id);
 export const OBSERVED_CHECK_IN_PHRASES = ["check in", "checkin", "cheak in", "check in at 7", "check in at 7:00", "clocked in @ 7:15 pm."];

@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, date, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const parserStatus = pgEnum("parser_status", ["PENDING", "PARSED", "UNPARSED", "ERROR"]);
 export const recordType = pgEnum("record_type", ["APPOINTMENT", "SALE", "LEAD", "DOCK", "MEDIA_ACTIVITY"]);
@@ -225,6 +225,12 @@ export const autoDockSettings = pgTable("auto_dock_settings", {
   approvedAt: timestamp("approved_at",{withTimezone:true}), updatedAt: timestamp("updated_at",{withTimezone:true}).notNull().defaultNow(),
 });
 export const autoDockPending = pgTable("auto_dock_pending", {businessDate:date("business_date").primaryKey(),requestedAt:timestamp("requested_at",{withTimezone:true}).notNull().defaultNow()});
+export const autoDockCallSources = pgTable("auto_dock_call_sources", {channelId:text("channel_id").primaryKey()});
+export const autoDockCallCoverage = pgTable("auto_dock_call_coverage", {
+  businessDate:date("business_date").notNull(),workspaceId:text("workspace_id").notNull(),
+  channelId:text("channel_id").notNull().references(()=>autoDockCallSources.channelId),
+  fetchedAt:timestamp("fetched_at",{withTimezone:true}).notNull(),messageCount:integer("message_count").notNull(),
+},t=>[primaryKey({columns:[t.businessDate,t.workspaceId,t.channelId]})]);
 export const attendanceMessages = pgTable("attendance_messages", {
   id: uuid("id").primaryKey().defaultRandom(), workspaceId:text("workspace_id").notNull(),channelId:text("channel_id").notNull(),slackTs:text("slack_ts").notNull(),slackUserId:text("slack_user_id").notNull(),employeeId:uuid("employee_id").references(()=>employees.id),
   sourceAt:timestamp("source_at",{withTimezone:true}).notNull(),rawText:text("raw_text").notNull(),isCheckIn:boolean("is_check_in").notNull().default(false),deleted:boolean("deleted").notNull().default(false),receivedAt:timestamp("received_at",{withTimezone:true}).notNull().defaultNow(),

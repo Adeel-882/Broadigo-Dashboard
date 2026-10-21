@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { syncAttendanceDay } from "./attendance";
+import {syncCallDay} from './call-coverage';
 import { autoDockDb, evaluateBusinessDay, readAutoDockSettings, resultRows } from "./service";
 import { FIRST_APPROVED_BUSINESS_DATE, latestClosedBusinessDate } from "./policy";
 
@@ -15,6 +16,7 @@ export async function reconcilePendingDays(limit=1) {
     const date=String(row.business_date);
     try {
     await syncAttendanceDay(date);
+    await syncCallDay(date,true);
     const result=await evaluateBusinessDay(date,true);
     // Leave changes committed during the snapshot/evaluation queued for a retry.
     await autoDockDb().execute(sql`delete from auto_dock_pending where business_date=${date}::date and requested_at<=${String(row.requested_at)}::timestamptz`);

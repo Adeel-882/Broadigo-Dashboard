@@ -13,17 +13,22 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
   beforeAll(async()=>{
     process.loadEnvFile(".env.local");
     db=postgres(process.env.DATABASE_URL!,{max:1,prepare:false,idle_timeout:0,max_lifetime:0});
-    for(const name of ["auto_dock_settings","attendance_coverage","attendance_messages","automatic_docks","auto_dock_runs","auto_dock_evaluations","auto_dock_exemptions","auto_dock_pending","appointments","sales","slack_messages"]){
+    for(const name of ["auto_dock_settings","attendance_coverage","attendance_messages","automatic_docks","auto_dock_runs","auto_dock_evaluations","auto_dock_exemptions","auto_dock_pending","appointments","sales","slack_messages","slack_channels"]){
       await db.unsafe(`create temporary table ${name} (like public.${name} including all)`);
       expect((await db`select relpersistence from pg_class where oid=to_regclass(${name})`)[0].relpersistence).toBe("t");
     }
     baseline=JSON.stringify(await db`select (select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.docks d) manual,(select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.automatic_docks d) automatic`);
     await db`insert into auto_dock_settings select * from public.auto_dock_settings`;
+    await db`insert into slack_channels select * from public.slack_channels`;
+    await db`insert into slack_channels(workspace_id,slack_channel_id,name,parser_type) values('T098UDG2RED','C0BADNJL14L','sdg-lhub-general','leadsedge-appointment') on conflict do nothing`;
     await db`insert into automatic_docks(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${dameon},'2026-10-16','closer_zero_sales',1500,'Historical reason','active','{}')`;
     await db`insert into automatic_docks(employee_id,business_date,rule_code,amount,reason,status,evidence) select id,'2026-10-16','closer_zero_sales',1500,'Historical reason','active','{}' from public.employees where canonical_name in ('Phillip Stokes','Dean Scott')`;
     await db`create trigger auto_dock_sale_changed after insert or update or delete on pg_temp.sales for each row execute function public.queue_auto_dock_activity()`;
     const migration=readFileSync("drizzle/0011_auto_dock_posted_calls.sql","utf8").replace("ADD COLUMN calls_rule_effective_from","ADD COLUMN IF NOT EXISTS calls_rule_effective_from").replaceAll("FUNCTION guard_auto_dock_policy()","FUNCTION pg_temp.guard_auto_dock_policy()").replaceAll("FUNCTION queue_auto_dock_activity()","FUNCTION pg_temp.queue_auto_dock_activity()").replaceAll("FUNCTION queue_auto_dock_source_change()","FUNCTION pg_temp.queue_auto_dock_source_change()");
     await db.begin(async tx=>{await tx.unsafe(migration);});
+    const third=readFileSync('drizzle/0013_auto_dock_third_channel.sql','utf8').replaceAll('CREATE TABLE ','CREATE TEMPORARY TABLE ').replaceAll('FUNCTION guard_auto_dock_call_coverage()','FUNCTION pg_temp.guard_auto_dock_call_coverage()').replaceAll('FUNCTION queue_auto_dock_activity()','FUNCTION pg_temp.queue_auto_dock_activity()').replaceAll('FUNCTION queue_auto_dock_source_change()','FUNCTION pg_temp.queue_auto_dock_source_change()');
+    await db.begin(async tx=>{await tx.unsafe(third);});
+    await db`insert into auto_dock_call_coverage select d::date,'T098UDG2RED',channel_id,now(),0 from auto_dock_call_sources cross join unnest(array['2026-10-16','2026-10-17']) d`;
     await db`update auto_dock_settings set calls_rule_effective_from=${day}`;
     await db`create trigger test_appointment after insert or update or delete on pg_temp.appointments for each row execute function pg_temp.queue_auto_dock_activity()`;
     await db`insert into attendance_coverage values(${day},'T098UDG2RED','C0980E2DWAK',now(),1)`;
@@ -36,7 +41,7 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
   afterAll(async()=>{if(db){try{if(baseline)expect(JSON.stringify(await db`select (select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.docks d) manual,(select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.automatic_docks d) automatic`)).toBe(baseline);}finally{await db.end({timeout:5});}}});
   async function call(user:string,owner:string,channel="C098WNHNBR7"){
     const [sm]=await db`insert into slack_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,raw_text,posted_at,parser_type,parser_status)
-      select 'T098UDG2RED',id,${crypto.randomUUID()},${user},${owner},'canonical fixture','2026-10-17T21:00:00Z',parser_type,'PARSED' from public.slack_channels where slack_channel_id=${channel} returning id`;
+      select 'T098UDG2RED',id,${crypto.randomUUID()},${user},${owner},'canonical fixture','2026-10-17T21:00:00Z',parser_type,'PARSED' from slack_channels where slack_channel_id=${channel} returning id`;
     await db`insert into appointments(slack_message_id,employee_id,occurred_at,scheduled_at,confidence,assigned_person) values(${sm.id},${owner},'2026-10-17T21:00:00Z','2026-10-22T10:00:00Z',1,${closerUser})`;
     return String(sm.id);
   }
@@ -107,6 +112,23 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     expect(JSON.stringify(await db`select * from automatic_docks where business_date='2026-10-16' order by id`)).toBe(fingerprint);
     await expect(db`update automatic_docks set amount=3000 where employee_id=${dameon}`).rejects.toThrow();
     await expect(db`delete from automatic_docks where employee_id=${dameon}`).rejects.toThrow();
+  },60000);
+  it('counts third-channel authors, including Harvey, but never the assignee; requires coverage',async()=>{
+    await db`delete from appointments`;
+    await call(setterUser,closer,'C0BADNJL14L');
+    let r=await evaluateBusinessDay(day,true,now);
+    expect(r.evaluations.find(e=>e.employeeId===setter)).toMatchObject({appointments:1,amount:0});
+    expect(r.evaluations.find(e=>e.employeeId===closer)).toMatchObject({appointments:0,amount:1500});
+    await call(closerUser,setter,'C0BADNJL14L');
+    const [identity]=await db`select slack_user_id from public.employee_slack_identities where employee_id=${harvey} and workspace_id='T098UDG2RED' limit 1`;
+    await call(String(identity.slack_user_id),closer,'C0BADNJL14L');
+    r=await evaluateBusinessDay(day,true,now);
+    expect(r.evaluations.find(e=>e.employeeId===closer)).toMatchObject({appointments:1,amount:0});
+    expect(r.evaluations.find(e=>e.employeeId===harvey)).toMatchObject({appointments:1,amount:0,attendanceRequired:false});
+    expect(r.evaluations.find(e=>e.employeeId===harvey)?.calls[0].channel).toBe('C0BADNJL14L');
+    expect(r.evaluations.find(e=>e.employeeId===dameon)?.decision).toBe('SKIP_EXCLUDED');
+    await db`delete from auto_dock_call_coverage where channel_id='C0BADNJL14L' and business_date=${day}`;
+    await expect(evaluateBusinessDay(day,true,now)).rejects.toThrow(/coverage/);
   },60000);
   it("refuses preactivation and incomplete dates",async()=>{
     await expect(evaluateBusinessDay("2026-10-15",true,now)).rejects.toThrow(/approved/);
