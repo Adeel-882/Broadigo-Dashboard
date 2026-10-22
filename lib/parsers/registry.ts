@@ -6,10 +6,11 @@ class AppointmentParser implements SlackMessageParser {
   constructor(public readonly key: string) {}
   parse(input: ParserInput): ParseResult | null {
     const f = extractFields(input.text);
-    const phone = slackLinkLabel(first(f, "phone", "phone number", "number")) ?? input.text.match(/<tel:[^|>]+\|([^>]+)>/i)?.[1] ?? null;
+    const plainContact = input.text.match(/\bwith\s+(.+?)\s+(\+\d[\d ()-]{6,}\d)(?=\s*(?:assigned\b|<@|@|$))/i);
+    const phone = slackLinkLabel(first(f, "phone", "phone number", "number")) ?? input.text.match(/<tel:[^|>]+\|([^>]+)>/i)?.[1] ?? plainContact?.[2]?.trim() ?? null;
     const sentenceProspect = input.text.match(/\bwith\s*(.*?)\s*<tel:/i)?.[1]?.trim()
-      ?? input.text.match(/\bcall\s+scheduled\s*:\s*(.+?)(?:\s+[I|]\s*)?<tel:/i)?.[1]?.trim()
-      ?? null;
+      ?? input.text.match(/\bcall\s+schedule(?:d)?\s*:\s*(.+?)(?:\s+[I|]\s*)?<tel:/i)?.[1]?.trim()
+      ?? plainContact?.[1]?.trim() ?? null;
     const prospect = first(f, "prospect", "realtor", "business", "client", "name") ?? sentenceProspect;
     const date = first(f, "date", "scheduled date", "appointment date")
       ?? input.text.match(/\b(today|tomorrow|(?:mon|tues|wednes|thurs|fri|satur|sun)day(?:\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\w+)?)?)\b/i)?.[1]
@@ -24,7 +25,7 @@ class AppointmentParser implements SlackMessageParser {
       ?? assignedField
       ?? null;
     const scheduledAt = parseScheduledCallAt(date, time, originalTimezone, input.postedAt);
-    const bookingPhrase = /\b(?:call|appointment)\s+(?:has\s+been\s+)?(?:scheduled|booked|set)\b/i.test(input.text);
+    const bookingPhrase = /\b(?:call|appointment)\s+(?:has\s+been\s+)?(?:scheduled|schedule|booked|set)\b/i.test(input.text);
     if (!phone || !bookingPhrase) return null;
     const warnings = [!prospect && "Prospect name missing", !date && "Scheduled date missing", !time && "Scheduled time missing"].filter(Boolean) as string[];
     return { recordType: "APPOINTMENT", rawSourceId: input.rawSourceId, confidence: warnings.length ? 0.82 : 0.96, warnings, values: { prospectName: prospect || null, phone, state: first(f, "state") ?? input.text.match(/\bfrom\s*([A-Z]{2})\s+for\b/i)?.[1]?.toUpperCase() ?? null, scheduledText: [date, time].filter(Boolean).join(" ") || null, scheduledAt: scheduledAt?.toISOString() ?? null, originalTimezone, assignedPerson } };

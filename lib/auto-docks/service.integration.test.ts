@@ -30,6 +30,9 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     await db.begin(async tx=>{await tx.unsafe(migration);});
     const third=readFileSync('drizzle/0013_auto_dock_third_channel.sql','utf8').replaceAll('CREATE TABLE ','CREATE TEMPORARY TABLE ').replaceAll('FUNCTION guard_auto_dock_call_coverage()','FUNCTION pg_temp.guard_auto_dock_call_coverage()').replaceAll('FUNCTION queue_auto_dock_activity()','FUNCTION pg_temp.queue_auto_dock_activity()').replaceAll('FUNCTION queue_auto_dock_source_change()','FUNCTION pg_temp.queue_auto_dock_source_change()');
     await db.begin(async tx=>{await tx.unsafe(third);});
+    const night=readFileSync('drizzle/0015_auto_dock_night_shift.sql','utf8').replaceAll('auto_dock_business_date(', 'pg_temp.auto_dock_business_date(').replaceAll('FUNCTION queue_auto_dock_activity()', 'FUNCTION pg_temp.queue_auto_dock_activity()').replaceAll('FUNCTION queue_auto_dock_source_change()', 'FUNCTION pg_temp.queue_auto_dock_source_change()');
+    await db.begin(async tx=>{await tx.unsafe(night);});
+    for(const [stamp,expected] of [['2026-10-20T13:59:59Z',null],['2026-10-20T14:00:00Z','2026-10-20'],['2026-10-20T22:59:59Z','2026-10-20'],['2026-10-20T23:00:00Z',null]])expect((await db`select pg_temp.auto_dock_business_date(${stamp}::timestamptz)::text as business_date`)[0].business_date).toBe(expected);
     const management=readFileSync('drizzle/0014_auto_dock_management_overrides.sql','utf8').replaceAll('CREATE TABLE ','CREATE TEMPORARY TABLE ').replaceAll('CREATE VIEW ','CREATE TEMPORARY VIEW ').replaceAll('FUNCTION preserve_auto_dock_edit_history()','FUNCTION pg_temp.preserve_auto_dock_edit_history()');
     await db.begin(async tx=>{await tx.unsafe(management);});
     await db`insert into auto_dock_call_coverage select d::date,'T098UDG2RED',channel_id,now(),0 from auto_dock_call_sources cross join unnest(array['2026-10-16','2026-10-17']) d`;

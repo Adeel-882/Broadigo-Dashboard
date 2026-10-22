@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     const sourceTs=routing.action==="auto-dock-call-deleted" ? event.deleted_ts : event.message?.ts ?? event.ts;
     if(sourceTs && /^\d+\.\d+$/.test(sourceTs)) {
       const sourceDay=autoDockBusinessDateFor(new Date(Number(sourceTs)*1000));
-      if(sourceDay>=FIRST_APPROVED_BUSINESS_DATE && sourceDay<=latestClosedBusinessDate()) {
+      if(sourceDay && sourceDay>=FIRST_APPROVED_BUSINESS_DATE && sourceDay<=latestClosedBusinessDate()) {
         try { await reconcilePendingDays(); }
         catch { console.error("[auto-dock] late activity reconciliation deferred; durable queue retained"); }
       }

@@ -58,6 +58,7 @@
     { "idx": 11, "version": "7", "when": 1792100000004, "tag": "0011_auto_dock_posted_calls", "breakpoints": true },
     { "idx": 12, "version": "7", "when": 1792100000005, "tag": "0012_authorized_oct16_call_policy", "breakpoints": true },
     { "idx": 13, "version": "7", "when": 1792100000006, "tag": "0013_auto_dock_third_channel", "breakpoints": true },
-    { "idx": 14, "version": "7", "when": 1792100000007, "tag": "0014_auto_dock_management_overrides", "breakpoints": true }
+    { "idx": 14, "version": "7", "when": 1792100000007, "tag": "0014_auto_dock_management_overrides", "breakpoints": true },
+    { "idx": 15, "version": "7", "when": 1792100000008, "tag": "0015_auto_dock_night_shift", "breakpoints": true }
   ]
 }

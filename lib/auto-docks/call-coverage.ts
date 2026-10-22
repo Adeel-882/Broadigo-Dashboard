@@ -1,3 +1,4 @@
+import {parserRegistry} from '@/lib/parsers/registry';
 import {sql} from 'drizzle-orm';
 import {autoDockDb,readAutoDockSettings,resultRows} from './service';
 import {AUTO_DOCK_CALL_CHANNEL_IDS,businessWindow} from './policy';
@@ -33,7 +34,7 @@ export async function syncCallDay(date:string,apply=false){
   const results=[];
   for(const {channel,messages} of pages){
     const existing=resultRows(await db.execute(sql`select sm.slack_ts,sm.parser_status from slack_messages sm join slack_channels c on c.id=sm.channel_id where sm.workspace_id=${settings.workspaceId} and c.slack_channel_id=${channel} and sm.posted_at>=${businessWindow(date).start.toISOString()}::timestamptz and sm.posted_at<${businessWindow(date).end.toISOString()}::timestamptz`));
-    const pending=messages.filter(isEligibleTopLevelMessage).filter(m=>!existing.some(e=>e.slack_ts===m.ts&&!['PENDING','ERROR'].includes(String(e.parser_status)))).length;
+    const pending=messages.filter(isEligibleTopLevelMessage).filter(m=>!existing.some(e=>e.slack_ts===m.ts&&!['PENDING','ERROR'].includes(String(e.parser_status)) && !(e.parser_status==='UNPARSED' && parserRegistry.parse('broadigo-appointment',{rawSourceId:m.ts,text:m.text??'',postedAt:new Date(Number(m.ts)*1000)})))).length;
     if(apply){
       // Already-settled sources need no replay; live message edits use normal ingestion.
       // Avoid needless transactions/reaction refreshes in the serverless cron budget.

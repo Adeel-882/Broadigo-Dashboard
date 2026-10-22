@@ -11,3 +11,5 @@ outputs/
 .codex-sheet-audit/
 artifacts/
 Skills/
+.vercel
+.env*

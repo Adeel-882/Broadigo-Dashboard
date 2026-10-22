@@ -57,17 +57,9 @@ describe("attendance evidence",()=>{
   it.each(["off","break","break off","present","office","did you check in?","please check in","not checked in",""])("does not infer attendance from %s",phrase=>expect(isCheckIn(phrase,OBSERVED_CHECK_IN_PHRASES)).toBe(false));
   it("normalizes only harmless formatting",()=>expect(isCheckIn(" *CHECK  IN* ",OBSERVED_CHECK_IN_PHRASES)).toBe(true));
 });
-describe("full 05:00 business day",()=>{
-  it("first approved window ends exactly October 17 05:00 Karachi",()=>{
-    const window=businessWindow("2026-10-16");expect(window.start.toISOString()).toBe("2026-10-16T00:00:00.000Z");expect(window.end.toISOString()).toBe("2026-10-17T00:00:00.000Z");
-  });
-  it.each(["check-in","appointment","sale"])("uses source-time boundaries for %s",()=>{
-    expect(operationalDateFor(new Date("2026-10-17T04:59:59+05:00"))).toBe("2026-10-16");
-    expect(operationalDateFor(new Date("2026-10-17T05:00:00+05:00"))).toBe("2026-10-17");
-  });
-  it("never evaluates an incomplete day",()=>{
-    expect(latestClosedBusinessDate(new Date("2026-10-17T04:59:59+05:00"))).toBe("2026-10-15");
-    expect(latestClosedBusinessDate(new Date("2026-10-17T05:00:00+05:00"))).toBe("2026-10-16");
-  });
-  it.each(["2026-02-30","garbage"])("rejects malformed day %s",date=>expect(()=>businessWindow(date)).toThrow());
+describe("nine-hour Karachi shift",()=>{
+ it("uses exact fixed boundaries",()=>{const w=businessWindow("2026-10-20");expect(w.start.toISOString()).toBe("2026-10-20T14:00:00.000Z");expect(w.end.toISOString()).toBe("2026-10-20T23:00:00.000Z");});
+ it.each([["2026-10-20T18:59:59+05:00",null],["2026-10-20T19:00:00+05:00","2026-10-20"],["2026-10-20T20:16:42+05:00","2026-10-20"],["2026-10-20T21:56:04+05:00","2026-10-20"],["2026-10-21T03:59:59+05:00","2026-10-20"],["2026-10-21T04:00:00+05:00",null]])("maps source %s",(stamp,date)=>expect(operationalDateFor(new Date(stamp!))).toBe(date));
+ it.each([["2026-10-21T03:59:59+05:00","2026-10-19"],["2026-10-21T04:00:00+05:00","2026-10-20"],["2026-10-21T04:37:00+05:00","2026-10-20"]])("closes at four regardless of invocation %s",(stamp,date)=>expect(latestClosedBusinessDate(new Date(stamp))).toBe(date));
+ it.each(["2026-02-30","garbage"])("rejects %s",date=>expect(()=>businessWindow(date)).toThrow());
 });

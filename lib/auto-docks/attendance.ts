@@ -1,3 +1,4 @@
+import {autoDockBusinessDateFor} from "./time";
 import { sql } from "drizzle-orm";
 import { autoDockDb, readAutoDockSettings, resultRows } from "./service";
 import { businessWindow, isCheckIn } from "./policy";
@@ -49,7 +50,9 @@ export async function syncAttendanceDay(date: string) {
 export async function queueGeneralEvent(workspace: string, channel: string, ts: string) {
   const settings = await readAutoDockSettings();
   if (workspace!==settings.workspaceId || channel!==settings.generalChannelId || !/^\d+\.\d+$/.test(ts)) return false;
-  await autoDockDb().execute(sql`insert into auto_dock_pending(business_date) values((to_timestamp(${ts}::numeric) at time zone 'Asia/Karachi' - interval '5 hours')::date) on conflict(business_date) do update set requested_at=now()`);
+  const date=autoDockBusinessDateFor(new Date(Number(ts)*1000));
+  if(!date)return false;
+  await autoDockDb().execute(sql`insert into auto_dock_pending(business_date) values(${date}::date) on conflict(business_date) do update set requested_at=now()`);
   return true;
 }
 

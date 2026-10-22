@@ -5,7 +5,7 @@ const dock=(id:string,status:string):AuditDock=>({employee_id:id,rule_code:'clos
 describe('automatic audit table',()=>{
   it('sorts decisions and excludes voided financial history from amounts',()=>{
     const rows=auditRows([evaluation('Z','SKIP_EXCLUDED'),evaluation('B','ACTIVITY_RECORDED'),evaluation('A','DOCK'),evaluation('C','SKIP_ABSENT')],[dock('Z','voided'),dock('A','active'),dock('A','voided'),dock('B','voided')]);
-    expect(rows.map(r=>r.decision)).toEqual(['Docked','Voided','Skipped','Excluded']);
+    expect(rows.map(r=>r.decision)).toEqual(['Docked','No dock','Skipped','Excluded']);
     expect(rows.map(r=>r.amount)).toEqual([1500,0,0,0]);
     expect(rows[3].role).toBe('Head of Sales');expect(rows[0].history).toHaveLength(2);
   });

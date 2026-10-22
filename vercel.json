@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["hnd1"],
-  "crons": [{ "path": "/api/cron/auto-docks", "schedule": "0 0 * * *" }],
+  "crons": [{ "path": "/api/cron/auto-docks", "schedule": "0 23 * * *" }],
   "functions": {
     "app/api/slack/events/route.ts": {
       "maxDuration": 30

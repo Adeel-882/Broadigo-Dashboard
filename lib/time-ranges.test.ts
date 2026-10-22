@@ -57,7 +57,7 @@ describe("America/Chicago reporting", () => {
   ])("uses local month/year boundaries at %s",(stamp,date)=>expect(operationalDateFor(new Date(stamp))).toBe(date));
   it.each(["2026-03-08T00:00:00Z","2026-11-01T00:00:00Z","2026-10-17T00:00:00Z"])("keeps automatic docks independent at %s",stamp=>{
     const now=new Date(stamp);
-    expect(autoDockBusinessDateFor(now)).toBe(stamp.slice(0,10));
+    expect(autoDockBusinessDateFor(now)).toBeNull();
     expect(latestClosedBusinessDate(now)).toBe(new Date(now.getTime()-86400000).toISOString().slice(0,10));
     expect(operationalDateFor(now)).not.toBe(autoDockBusinessDateFor(now));
   });

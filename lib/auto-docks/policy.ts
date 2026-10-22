@@ -1,4 +1,4 @@
-import { autoDockBusinessDateFor } from "./time";
+export { businessWindow, latestClosedBusinessDate } from "./time";
 
 /** Explicit management approval. Never backdate financial creation. */
 export const FIRST_APPROVED_BUSINESS_DATE = "2026-10-16";
@@ -26,18 +26,6 @@ export function autoRole(employeeId: string, title: string): AutoRole {
   if (/\bcloser\b/i.test(title)) return "CLOSER";
   if (/\bappointment setter\b/i.test(title)) return "SETTER";
   return "OTHER";
-}
-export function businessWindow(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid business date");
-  // Karachi is UTC+05:00: 05:00 local is 00:00 UTC. Unlike reporting,
-  // automatic inactivity uses the full day, including pre-shift check-ins.
-  const start = new Date(`${date}T00:00:00.000Z`);
-  if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0,10)!==date) throw new Error("Invalid business date");
-  return { start, end: new Date(start.getTime()+86_400_000) };
-}
-export function latestClosedBusinessDate(now = new Date()) {
-  const today = businessWindow(autoDockBusinessDateFor(now));
-  return new Date(today.start.getTime()-86_400_000).toISOString().slice(0,10);
 }
 /** Only exact, reviewed production phrases may be configured. Empty means
  * unconfigured, never "everyone absent". No guessed attendance vocabulary. */

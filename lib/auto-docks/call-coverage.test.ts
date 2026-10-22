@@ -10,7 +10,7 @@ describe('complete canonical call-channel coverage',()=>{
   beforeEach(()=>{vi.stubEnv('SLACK_BOT_TOKEN','test-only');mocks.execute.mockReset().mockResolvedValue([]);mocks.ingest.mockReset().mockResolvedValue({imported:0});});
   afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
   it('reads every page, includes start and excludes next business-day start',async()=>{
-    const start=Date.parse('2026-10-16T00:00:00Z')/1000,end=start+86400;
+    const start=Date.parse('2026-10-16T14:00:00Z')/1000,end=start+32400;
     const fetchMock=vi.fn().mockResolvedValueOnce(response({ok:true,messages:[{ts:String(start)}],has_more:true,response_metadata:{next_cursor:'next'}})).mockResolvedValueOnce(response({ok:true,messages:[{ts:String(end-1)},{ts:String(end)}]}));
     vi.stubGlobal('fetch',fetchMock);
     expect((await fetchCallDay('C0BADNJL14L','2026-10-16')).map(m=>m.ts)).toEqual([String(start),String(end-1)]);
@@ -27,7 +27,7 @@ describe('complete canonical call-channel coverage',()=>{
     expect(mocks.ingest).not.toHaveBeenCalled();expect(mocks.execute).not.toHaveBeenCalled();
   });
   it('dry-run uses existing source identity and ignores thread replies',async()=>{
-    const ts=String(Date.parse('2026-10-16T12:00:00Z')/1000);
+    const ts=String(Date.parse('2026-10-16T15:00:00Z')/1000);
     vi.stubGlobal('fetch',vi.fn().mockImplementation(async()=>response({ok:true,messages:[{ts,text:'Call scheduled',user:'U1'},{ts:String(+ts+1),thread_ts:ts,text:'reply',user:'U1'}]})));
     mocks.execute.mockResolvedValue([{slack_ts:ts,parser_status:'PARSED'}]);
     const result=await syncCallDay('2026-10-16');
@@ -50,4 +50,13 @@ describe('complete canonical call-channel coverage',()=>{
     expect(result.complete).toBe(true);expect(result.results).toHaveLength(3);
     expect(mocks.execute).toHaveBeenCalledTimes(7);expect(mocks.ingest).not.toHaveBeenCalled();
   });
+  it('reconsiders an unparsed valid call but not ordinary conversation',async()=>{
+    const ts=String(Date.parse('2026-10-20T15:16:42Z')/1000);
+    vi.stubGlobal('fetch',vi.fn().mockImplementation(async()=>response({ok:true,messages:[{ts,text:'Call schedule from TX for tomorrow at 10 AM CST with John +1234567890',user:'U1'},{ts:String(+ts+1),text:'schedule this later',user:'U1'}]})));
+    mocks.execute.mockResolvedValue([{slack_ts:ts,parser_status:'UNPARSED'},{slack_ts:String(+ts+1),parser_status:'UNPARSED'}]);
+    expect((await syncCallDay('2026-10-20')).results.map(r=>r.pending)).toEqual([1,1,1]);
+    mocks.execute.mockResolvedValue([{slack_ts:ts,parser_status:'PARSED'},{slack_ts:String(+ts+1),parser_status:'UNPARSED'}]);
+    expect((await syncCallDay('2026-10-20')).results.map(r=>r.pending)).toEqual([0,0,0]);
+  });
+
 });
