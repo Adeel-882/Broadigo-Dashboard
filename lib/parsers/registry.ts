@@ -41,7 +41,7 @@ class SaleParser implements SlackMessageParser {
     const amount = parsedAmount == null ? null : Math.abs(parsedAmount);
     const phone = slackLinkLabel(first(f, "phone", "number", "contact", "cell number")) ?? input.text.match(/<tel:[^|>]+\|([^>]+)>/i)?.[1] ?? null;
     const email = slackLinkLabel(first(f, "email")) ?? input.text.match(/<mailto:[^|>]+\|([^>]+)>/i)?.[1] ?? input.text.match(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/)?.[0] ?? null;
-    const packageName = first(f, "package", "plan") ?? input.text.match(/\b(Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan(?:\s*\([^|\n)]{1,30}\)|\s+Half)?|Essential\s+Plan\s+Residential)/i)?.[1]?.trim() ?? null;
+    const packageName = first(f, "package", "plan") ?? input.text.match(/\b(Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan(?:\s*\([^|\n)]{1,30}\)|\s+Half)?|Essential\s+Plan\s+Residential)/i)?.[1]?.trim() ?? input.text.match(/\b(Edge\s+Executive)(?=\s*-\s*\$\s*\d)/i)?.[1] ?? null;
     if ((!phone && !email) || (!packageName && !/\b(?:sold|closed deal)\b/i.test(input.text))) return null;
     const zipText = first(f, "zip", "zips", "zip codes") ?? input.text.match(/\bZIPs?\s*:\s*([^|\n]+)/i)?.[1] ?? "";
     const apparentPlanPrice = Boolean(packageName && /(?:-?\$\s*[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)?\s*(?:\$|USD\b))/i.test(input.text));
@@ -59,7 +59,9 @@ class SaleParser implements SlackMessageParser {
  */
 export function salePriceFromPlanSegment(text: string) {
   const match = text.match(/\b(?:Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan|Essential\s+Plan\s+Residential)(?:\s*\([^|\n)]{1,30}\)|\s+Half)?[^\d$|\n]{0,20}[|:\-\s]{0,8}(?:-\s*)?(?:\$\s*([\d,]+(?:\.\d+)?)(?![\d,]|\s*[KM]\b)|([\d,]+(?:\.\d+)?)(?![\d,])\s*(?:\$|USD\b)(?!\s*[KM]\b))/i);
-  const value = match?.[1] ?? match?.[2] ?? null;
+  // Observed canonical sales omit "Plan": Edge Executive - $1250.
+  // Require the adjacent price; never consume onboarding/property-price text.
+  const value = match?.[1] ?? match?.[2] ?? text.match(/\bEdge\s+Executive\s*-\s*\$\s*([\d,]+(?:\.\d+)?)(?![\d,.]|\s*[KM]\b)/i)?.[1] ?? null;
   return value?.replace(/,/g, "") ?? null;
 }
 
