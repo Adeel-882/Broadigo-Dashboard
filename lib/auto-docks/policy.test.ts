@@ -29,8 +29,7 @@ describe("attendance-gated automatic docks",()=>{
       expect(result.attendanceStatus).toBe("BYPASSED");expect(result.decision).toBe(appointments===0?"DOCK":"ACTIVITY_RECORDED");
     }
   });
-  it("Dameon never receives any rule, regardless of role, calls, sales or attendance",()=>{
-    const employeeId="d2bf73cc-c9f6-48a8-be72-61b827e39619";
+  it.each(["d2bf73cc-c9f6-48a8-be72-61b827e39619","e18ba4b0-0b55-4615-b01d-c83379049b9f"])("excluded employee %s never receives any rule, regardless of role, calls, sales or attendance",employeeId=>{
     for(const title of ["Closer","Appointment Setter","Hybrid Media"])for(const checkInFound of [false,true])for(const sales of [0,1,10])for(const appointments of [0,5]){
       const result=evaluateAutoDockState({...base,employeeId,title,checkInFound,sales,appointments});
       expect(result.ruleCode).toBeNull();expect(result.amount).toBe(0);expect(result.decision).toBe("SKIP_EXCLUDED");expect(result.attendanceStatus).toBe("EXCLUDED");

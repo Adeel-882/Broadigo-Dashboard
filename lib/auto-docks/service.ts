@@ -38,9 +38,10 @@ export async function evaluateBusinessDay(date:string, apply=false, now=new Date
         , exists(select 1 from automatic_docks ad where ad.employee_id=e.id and ad.business_date=${date}::date) previously_evaluated
         from employees e where e.id not in (${sql.join(AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS.map(id=>sql`${id}::uuid`),sql`,`)}) order by e.canonical_name`));
       // Excluded employees receive an explicit SKIP record without querying their
-      // attendance, calls, sales, membership or role for inactivity evaluation.
-      const excluded=resultRows(await tx.execute(sql`select id,canonical_name from employees where id in (${sql.join(AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS.map(id=>sql`${id}::uuid`),sql`,`)})`));
-      people.push(...excluded.map(p=>({...p,job_title:"",check_ins:[],calls:[],sales:0})));
+      // attendance, calls, sales or membership for inactivity evaluation.
+      // Their formal title is retained solely for the audit's role label.
+      const excluded=resultRows(await tx.execute(sql`select id,canonical_name,job_title from employees where id in (${sql.join(AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS.map(id=>sql`${id}::uuid`),sql`,`)})`));
+      people.push(...excluded.map(p=>({...p,check_ins:[],calls:[],sales:0})));
       const evaluations=people.filter(p=>isAutoDockExcluded(String(p.id))||p.previously_evaluated||autoRole(String(p.id),String(p.job_title))!=="OTHER").map(p=>{
         const checkIns=p.check_ins as Array<{channel:string;ts:string}>;
         const input={employeeId:String(p.id),title:String(p.job_title),active:p.active===true,membershipEligible:p.membership_eligible===true,exempt:p.exempt===true,attendanceReliable:reliable,checkInFound:checkIns.length>0,appointments:(p.calls as unknown[]).length,sales:Number(p.sales)};

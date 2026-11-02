@@ -166,4 +166,16 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     await expect(evaluateBusinessDay("2026-10-15",true,now)).rejects.toThrow(/approved/);
     await expect(evaluateBusinessDay("2026-10-18",true,now)).rejects.toThrow(/incomplete/);
   });
+  it('Jordan remains a visible Closer but never receives an automatic dock, even with personally posted calls',async()=>{
+    const jordan='e18ba4b0-0b55-4615-b01d-c83379049b9f';
+    await db`update employees set job_title='Closer',active=true where id=${jordan}`;
+    await db.unsafe(readFileSync('drizzle/0016_jordan_auto_dock_exemption.sql','utf8'));
+    for(const calls of [0,1]){
+      if(calls)await call('U098A685CR4',jordan);
+      const result=await evaluateBusinessDay(day,true,now);
+      expect(result.evaluations.find(e=>e.employeeId===jordan)).toMatchObject({role:'CLOSER',decision:'SKIP_EXCLUDED',ruleCode:null,amount:0});
+      expect(Number((await db`select count(*) n from automatic_docks where employee_id=${jordan}`)[0].n)).toBe(0);
+    }
+    await expect(db`insert into automatic_docks(employee_id,business_date,rule_code,amount,reason,status,evidence) values(${jordan},${day},'closer_zero_calls',1500,'fixture','active','{}')`).rejects.toThrow('jordan_no_active_automatic_dock');
+  },60000);
 });

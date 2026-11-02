@@ -7,7 +7,7 @@ describe('automatic audit table',()=>{
     const rows=auditRows([evaluation('Z','SKIP_EXCLUDED'),evaluation('B','ACTIVITY_RECORDED'),evaluation('A','DOCK'),evaluation('C','SKIP_ABSENT')],[dock('Z','voided'),dock('A','active'),dock('A','voided'),dock('B','voided')]);
     expect(rows.map(r=>r.decision)).toEqual(['Docked','No dock','Skipped','Excluded']);
     expect(rows.map(r=>r.amount)).toEqual([1500,0,0,0]);
-    expect(rows[3].role).toBe('Head of Sales');expect(rows[0].history).toHaveLength(2);
+    expect(rows[3].role).toBe('Closer');expect(rows[0].history).toHaveLength(2);
   });
   it('labels current call rules separately from historical sales rules',()=>{
     expect(ruleLabel('closer_zero_calls')).toBe('Closer — No calls');

@@ -7,6 +7,13 @@ const identities = new Map([
 ]);
 
 describe("structured Slack attribution", () => {
+  it("Jordan's automatic exemption does not affect manual docks or setter ownership", () => {
+    const jordan='e18ba4b0-0b55-4615-b01d-c83379049b9f';
+    const mapping=new Map([['U098A685CR4',jordan]]);
+    expect(resolveStructuredAttribution('DOCK','setter',{targetSlackUserIds:['U098A685CR4']},mapping).employeeIds).toEqual([jordan]);
+    expect(resolveStructuredAttribution('APPOINTMENT','setter',{assignedPerson:'U098A685CR4'},mapping).employeeId).toBe('setter');
+    expect(resolveStructuredAttribution('APPOINTMENT',jordan,{assignedPerson:'another-closer'},mapping).employeeId).toBe(jordan);
+  });
   it("attributes the posted dock to its mentioned target", () => {
     expect(resolveStructuredAttribution("DOCK", "employee-mark-smith", { targetSlackUserIds: ["U_HAMDAN"] }, identities)).toEqual({
       employeeId: "employee-hamdan-mahmood", employeeIds: ["employee-hamdan-mahmood"], warnings: [],

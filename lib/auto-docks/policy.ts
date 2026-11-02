@@ -10,7 +10,10 @@ export const AUTO_DOCK_AMOUNTS = {
 } as const;
 // Exact IDs already configured in production; names are display labels only.
 export const AUTO_DOCK_CALL_CHANNEL_IDS = ["C098WNHNBR7", "C0B0P6P7FPG", "C0BADNJL14L"] as const;
-export const AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS: readonly string[] = ["d2bf73cc-c9f6-48a8-be72-61b827e39619"]; // Dameon Wolfe
+export const AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS: readonly string[] = [
+  "d2bf73cc-c9f6-48a8-be72-61b827e39619", // Dameon Wolfe
+  "e18ba4b0-0b55-4615-b01d-c83379049b9f", // Jordan Reid / Shaheer Ali
+];
 export const isAutoDockExcluded = (id: string) => AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS.includes(id);
 export const OBSERVED_CHECK_IN_PHRASES = ["check in", "checkin", "cheak in", "check in at 7", "check in at 7:00", "clocked in @ 7:15 pm."];
 
@@ -42,7 +45,7 @@ export interface EvaluationInput {
 }
 export function evaluateAutoDockState(input: EvaluationInput) {
   // Exclusion precedes role, attendance and activity evaluation, not a bypass.
-  if(isAutoDockExcluded(input.employeeId))return {role:"OTHER" as AutoRole,ruleCode:null,attendanceRequired:false,attendanceStatus:"EXCLUDED",decision:"SKIP_EXCLUDED",amount:0,reason:"Excluded from automatic inactivity docks"};
+  if(isAutoDockExcluded(input.employeeId))return {role:autoRole(input.employeeId,input.title),ruleCode:null,attendanceRequired:false,attendanceStatus:"EXCLUDED",decision:"SKIP_EXCLUDED",amount:0,reason:"Automatic dock exemption"};
   const role=autoRole(input.employeeId,input.title);
   const attendanceRequired=!AUTO_DOCK_EMPLOYEE_OVERRIDES[input.employeeId]?.bypassAttendance;
   const attendanceStatus=!input.attendanceReliable ? "UNKNOWN" : !attendanceRequired ? "BYPASSED" : input.checkInFound ? "PRESENT" : "ABSENT";
