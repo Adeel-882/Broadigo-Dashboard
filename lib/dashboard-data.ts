@@ -99,7 +99,7 @@ const isaLeadMembership = (employeeColumn: string, occurredAtColumn: string) => 
 const teamActivity = (current: (column: string) => ReturnType<typeof sql>) => sql`
   select employee_id, team_id from appointments where ${current("occurred_at")} and employee_id is not null and team_id is not null
   union
-  select employee_id, team_id from sales where ${current("occurred_at")} and employee_id is not null and team_id is not null
+  select employee_id, team_id from canonical_sales where ${current("occurred_at")} and employee_id is not null and team_id is not null
   union
   select employee_id, team_id from leads where ${current("occurred_at")} and employee_id is not null and team_id is not null
   union
@@ -139,10 +139,10 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
     db.execute(sql`select
       (select count(*) from appointments where ${current("occurred_at")})::int appointments,
       (select count(*) from appointments where ${previous("occurred_at")})::int appointments_prev,
-      (select count(*) from sales where ${current("occurred_at")})::int sales,
-      (select count(*) from sales where ${previous("occurred_at")})::int sales_prev,
-      (select coalesce(sum(amount),0) from sales where ${current("occurred_at")}) revenue,
-      (select coalesce(sum(amount),0) from sales where ${previous("occurred_at")}) revenue_prev,
+      (select count(*) from canonical_sales where ${current("occurred_at")})::int sales,
+      (select count(*) from canonical_sales where ${previous("occurred_at")})::int sales_prev,
+      (select coalesce(sum(amount),0) from canonical_sales where ${current("occurred_at")}) revenue,
+      (select coalesce(sum(amount),0) from canonical_sales where ${previous("occurred_at")}) revenue_prev,
       (select count(*) from leads l where ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")})::int leads,
       (select count(*) from leads l where ${previous("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")})::int leads_prev,
       (select count(*) from leads l where ${current("l.occurred_at")} and ${isaLeadMembership("l.employee_id", "l.occurred_at")})::int leads_submitted,
@@ -163,8 +163,8 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
       order by e.active desc, e.canonical_name`),
     db.execute(sql`select employee_id, metric, sum(current_value)::numeric current_value, sum(previous_value)::numeric previous_value from (
       select employee_id, 'appointments' metric, count(*) filter(where ${current("occurred_at")}) current_value, count(*) filter(where ${previous("occurred_at")}) previous_value from appointments group by employee_id
-      union all select employee_id, 'revenue', coalesce(sum(amount) filter(where ${current("occurred_at")}),0), coalesce(sum(amount) filter(where ${previous("occurred_at")}),0) from sales group by employee_id
-      union all select employee_id, 'sales', count(*) filter(where ${current("occurred_at")}), count(*) filter(where ${previous("occurred_at")}) from sales group by employee_id
+      union all select employee_id, 'revenue', coalesce(sum(amount) filter(where ${current("occurred_at")}),0), coalesce(sum(amount) filter(where ${previous("occurred_at")}),0) from canonical_sales group by employee_id
+      union all select employee_id, 'sales', count(*) filter(where ${current("occurred_at")}), count(*) filter(where ${previous("occurred_at")}) from canonical_sales group by employee_id
       union all select l.employee_id, 'leads', count(*) filter(where ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}), count(*) filter(where ${previous("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) from leads l group by l.employee_id
       union all select l.employee_id, 'leads_submitted', count(*) filter(where ${current("l.occurred_at")} and ${isaLeadMembership("l.employee_id", "l.occurred_at")}), 0 from leads l group by l.employee_id
       union all select employee_id, 'work', count(*) filter(where ${current("occurred_at")}), count(*) filter(where ${previous("occurred_at")}) from media_activity group by employee_id
@@ -172,7 +172,7 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
     db.execute(sql`select t.id, t.name, t.type, d.name division, count(distinct m.employee_id) filter(where e.active)::int member_count,
       coalesce(array_agg(distinct e.canonical_name) filter(where e.canonical_name is not null and e.active), '{}') members,
       coalesce((select count(*) from appointments a where a.team_id=t.id and ${current("a.occurred_at")}),0)::numeric appointments,
-      coalesce((select sum(s.amount) from sales s where s.team_id=t.id and ${current("s.occurred_at")}),0)::numeric revenue,
+      coalesce((select sum(s.amount) from canonical_sales s where s.team_id=t.id and ${current("s.occurred_at")}),0)::numeric revenue,
       coalesce((select count(*) from leads l where l.team_id=t.id and ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}),0)::numeric leads,
       coalesce((select count(*) from media_activity ma where ma.team_id=t.id and ${current("ma.occurred_at")}),0)::numeric work
       from teams t join divisions d on d.id=t.division_id left join employee_team_memberships m on m.team_id=t.id left join employees e on e.id=m.employee_id group by t.id,d.name order by d.name,t.name`),
@@ -180,7 +180,7 @@ async function getBaseDashboardData(period: PeriodKey = "This Week", customStart
     db.execute(sql`select to_char(${calendarDateSql(occurredAt("occurred_at"))}, 'Mon DD') as "day", count(*)::int appointments from appointments where ${current("occurred_at")} group by ${calendarDateSql(occurredAt("occurred_at"))} order by ${calendarDateSql(occurredAt("occurred_at"))}`),
     db.execute(sql`select * from (
       select a.id, a.employee_id, coalesce(e.canonical_name,'Unmapped') employee, 'Appointment' type, coalesce(a.prospect_name,'Appointment reported') summary, coalesce(a.state,'') detail, c.name channel, a.occurred_at, sm.raw_text raw, true counts_toward_kpi, '[]'::jsonb exclusion_reasons from appointments a join slack_messages sm on sm.id=a.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=a.employee_id where ${current("a.occurred_at")}
-      union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
+      union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from canonical_sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
       union all select l.id,l.employee_id,coalesce(e.canonical_name,'Unmapped'),'Lead',coalesce(l.contact_name,'Lead reported'),coalesce(l.lead_type,''),c.name,l.occurred_at,sm.raw_text,l.counts_toward_kpi,l.exclusion_reasons from leads l join slack_messages sm on sm.id=l.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=l.employee_id where ${current("l.occurred_at")}
       union all select ma.id,ma.employee_id,coalesce(e.canonical_name,'Unmapped'),'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=ma.employee_id where ${current("ma.occurred_at")}
       union all select dk.id,coalesce(dr.employee_id,dk.employee_id),coalesce(e.canonical_name,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join dock_recipients dr on dr.dock_id=dk.id left join employees e on e.id=coalesce(dr.employee_id,dk.employee_id) where ${current("dk.occurred_at")}
@@ -250,7 +250,7 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
   const metric = primaryMetricForTitle(text(employeeRow.job_title));
   const metricLabel = metric === "revenue" ? "Revenue" : metric === "appointments" ? "Appointments" : metric === "leads" ? "Leads" : "Media activity";
   const trendResult = metric === "revenue"
-    ? await db.execute(sql`select ${calendarDateSql(occurredAt("occurred_at"))} as "day",coalesce(sum(amount),0)::numeric as "value" from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`)
+    ? await db.execute(sql`select ${calendarDateSql(occurredAt("occurred_at"))} as "day",coalesce(sum(amount),0)::numeric as "value" from canonical_sales where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`)
     : metric === "leads"
       ? await db.execute(sql`select ${calendarDateSql(occurredAt("l.occurred_at"))} as "day",count(*)::int as "value" from leads l where l.employee_id=${employeeId}::uuid and ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")} group by 1 order by 1`)
       : metric === "work"
@@ -258,7 +258,7 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
         : await db.execute(sql`select ${calendarDateSql(occurredAt("occurred_at"))} as "day",count(*)::int as "value" from appointments where employee_id=${employeeId}::uuid and ${current("occurred_at")} group by 1 order by 1`);
   const activitiesResult = await db.execute(sql`select * from (
     select a.id,a.employee_id,e.canonical_name employee,'Appointment' type,coalesce(a.prospect_name,'Appointment reported') summary,coalesce(a.state,'') detail,c.name channel,a.occurred_at,sm.raw_text raw,true counts_toward_kpi,'[]'::jsonb exclusion_reasons from appointments a join employees e on e.id=a.employee_id join slack_messages sm on sm.id=a.slack_message_id join slack_channels c on c.id=sm.channel_id where a.employee_id=${employeeId} and ${current("a.occurred_at")}
-    union all select s.id,s.employee_id,e.canonical_name,'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join employees e on e.id=s.employee_id join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id where s.employee_id=${employeeId} and ${current("s.occurred_at")}
+    union all select s.id,s.employee_id,e.canonical_name,'Sale',coalesce(s.customer_name,'Sale reported'),concat(coalesce(s.currency,'USD'),' ',coalesce(s.amount,0)),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from canonical_sales s join employees e on e.id=s.employee_id join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id where s.employee_id=${employeeId} and ${current("s.occurred_at")}
     union all select l.id,l.employee_id,e.canonical_name,'Lead',coalesce(l.contact_name,'Lead reported'),coalesce(l.lead_type,''),c.name,l.occurred_at,sm.raw_text,l.counts_toward_kpi,l.exclusion_reasons from leads l join employees e on e.id=l.employee_id join slack_messages sm on sm.id=l.slack_message_id join slack_channels c on c.id=sm.channel_id where l.employee_id=${employeeId} and sm.source_unavailable_at is null and ${current("l.occurred_at")}
     union all select ma.id,ma.employee_id,e.canonical_name,'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join employees e on e.id=ma.employee_id join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id where ma.employee_id=${employeeId} and ${current("ma.occurred_at")}
     union all select dk.id,${employeeId}::uuid,${text(employeeRow.canonical_name)},'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id where ${current("dk.occurred_at")} and (exists(select 1 from dock_recipients dr where dr.dock_id=dk.id and dr.employee_id=${employeeId}::uuid) or (not exists(select 1 from dock_recipients dr where dr.dock_id=dk.id) and dk.employee_id=${employeeId}::uuid))
@@ -289,13 +289,13 @@ async function getBaseEmployeeDetail(employeeId: string, period: PeriodKey = "Th
   // Official target values are fixed, while every numerator follows the same
   // active calendar range as the employee's headline KPI and evidence.
   const [periodResult] = rows(await db.execute(sql`select
-    (select coalesce(sum(amount),0)::numeric from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) revenue,
-    (select count(*)::int from sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) closed_sales,
+    (select coalesce(sum(amount),0)::numeric from canonical_sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) revenue,
+    (select count(*)::int from canonical_sales where employee_id=${employeeId}::uuid and ${current("occurred_at")}) closed_sales,
     (select count(*)::int from appointments where employee_id=${employeeId}::uuid and ${current("occurred_at")}) appointments_booked,
     (select count(*)::int from appointments where employee_id=${employeeId}::uuid and qualification_status='QUALIFIED' and ${current("occurred_at")}) qualified_calls,
     (select count(*)::int from leads l where l.employee_id=${employeeId}::uuid and ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) leads,
     (select count(*)::int from leads l where ${current("l.occurred_at")} and ${countedIsaLead("l.employee_id", "l.occurred_at")}) team_leads,
-    (select count(*)::int from sales s join employees peer on peer.id = s.employee_id
+    (select count(*)::int from canonical_sales s join employees peer on peer.id = s.employee_id
        where peer.job_title = ${text(employeeRow.job_title)}) role_sale_rows`));
 
   return {
@@ -339,7 +339,7 @@ export async function searchDashboardActivities(query: string, period: PeriodKey
   const db=getDb();if(!db)return[];const range=resolveDateRange(period,customStart,customEnd);const {start,end}=dashboardRange(range),pattern=`%${term}%`;const current=(column:string)=>calendarTimestampFilter(occurredAt(column),start,end);
   const result=await db.execute(sql`select * from (
     select a.id,a.employee_id,coalesce(e.canonical_name,'Unmapped') employee,'Appointment' type,coalesce(a.prospect_name,'Appointment reported') summary,concat_ws(' · ',a.state,a.phone,a.assigned_person) detail,c.name channel,a.occurred_at,sm.raw_text raw,true counts_toward_kpi,'[]'::jsonb exclusion_reasons from appointments a join slack_messages sm on sm.id=a.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=a.employee_id where ${current("a.occurred_at")}
-    union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat_ws(' · ',s.currency||' '||s.amount,s.package_name,s.state,array_to_string(s.zip_codes,',')),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
+    union all select s.id,s.employee_id,coalesce(e.canonical_name,'Unmapped'),'Sale',coalesce(s.customer_name,'Sale reported'),concat_ws(' · ',s.currency||' '||s.amount,s.package_name,s.state,array_to_string(s.zip_codes,',')),c.name,s.occurred_at,sm.raw_text,true,'[]'::jsonb from canonical_sales s join slack_messages sm on sm.id=s.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=s.employee_id where ${current("s.occurred_at")}
     union all select l.id,l.employee_id,coalesce(e.canonical_name,'Unmapped'),'Lead',coalesce(l.contact_name,'Lead reported'),concat_ws(' · ',l.lead_type,l.state,l.phone,l.email,l.property_type,l.timeline,l.details::text),c.name,l.occurred_at,sm.raw_text,l.counts_toward_kpi,l.exclusion_reasons from leads l join slack_messages sm on sm.id=l.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=l.employee_id where ${current("l.occurred_at")}
     union all select ma.id,ma.employee_id,coalesce(e.canonical_name,'Unmapped'),'Work update',ma.summary,ma.classification,c.name,ma.occurred_at,sm.raw_text,true,'[]'::jsonb from media_activity ma join slack_messages sm on sm.id=ma.slack_message_id join slack_channels c on c.id=sm.channel_id left join employees e on e.id=ma.employee_id where ${current("ma.occurred_at")}
     union all select dk.id,coalesce(dr.employee_id,dk.employee_id),coalesce(e.canonical_name,'Unmapped'),'Dock',dk.reason,concat(dk.currency,' ',dk.amount),c.name,dk.occurred_at,sm.raw_text,true,'[]'::jsonb from docks dk join slack_messages sm on sm.id=dk.slack_message_id join slack_channels c on c.id=sm.channel_id left join dock_recipients dr on dr.dock_id=dk.id left join employees e on e.id=coalesce(dr.employee_id,dk.employee_id) where ${current("dk.occurred_at")}

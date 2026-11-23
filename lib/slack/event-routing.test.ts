@@ -3,6 +3,9 @@ import { classifySlackEnvelope } from "./event-routing";
 import type { SlackEnvelope } from "./types";
 
 describe("Slack event routing",()=>{
+  it.each(['C098D7NHQ69','C0B1UH7BV9N'])('routes sale-source deletion for %s without changing unrelated channels',channel=>{
+    expect(classifySlackEnvelope({type:'event_callback',event_id:'delete-sale',team_id:'T1',event:{type:'message',subtype:'message_deleted',channel,ts:'1795445900.000000',deleted_ts:'1795445706.508859'}}).action).toBe('sale-source-deleted');
+  });
   it("routes lead deletions by original deleted_ts, not the delivery timestamp",()=>{
     expect(classifySlackEnvelope({type:'event_callback',event_id:'delete',team_id:'T1',event:{type:'message',subtype:'message_deleted',channel:'C098C93DGTY',ts:'1791843229.000001',deleted_ts:'1790958602.271949'}}).action).toBe('lead-deleted');
   });

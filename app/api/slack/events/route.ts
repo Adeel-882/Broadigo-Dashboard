@@ -1,4 +1,5 @@
 import { ingestSlackEvent } from "@/lib/slack/ingest";
+import { ingestSaleSourceDeletion } from "@/lib/slack/sale-source-events";
 import { ingestLeadDeletion } from "@/lib/slack/lead-source-events";
 import { ingestAppointmentDispositionEvent } from "@/lib/slack/appointment-dispositions";
 import { ingestSlackReactionEvent } from "@/lib/slack/reaction-events";
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   try {
-    const outcome = routing.action === "auto-dock-call-deleted" ? await ingestAutoDockCallDeletion(callback) : routing.action === "lead-deleted" ? await ingestLeadDeletion(callback) : routing.action === "reaction"
+    const outcome = routing.action === "sale-source-deleted" ? await ingestSaleSourceDeletion(callback) : routing.action === "auto-dock-call-deleted" ? await ingestAutoDockCallDeletion(callback) : routing.action === "lead-deleted" ? await ingestLeadDeletion(callback) : routing.action === "reaction"
       ? await ingestSlackReactionEvent(payload as unknown as SlackReactionEventCallback)
       : routing.action === "appointment-disposition"
         ? await ingestAppointmentDispositionEvent(callback)
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
     // transaction via triggers. Reconcile closed days inline; on failure the
     // durable queue remains available to cron without undoing Slack ingestion.
     const sourceTs=routing.action==="auto-dock-call-deleted" ? event.deleted_ts : event.message?.ts ?? event.ts;
-    if(sourceTs && /^\d+\.\d+$/.test(sourceTs)) {
+    if(routing.action!=="sale-source-deleted" && sourceTs && /^\d+\.\d+$/.test(sourceTs)) {
       const sourceDay=autoDockBusinessDateFor(new Date(Number(sourceTs)*1000));
       if(sourceDay && sourceDay>=FIRST_APPROVED_BUSINESS_DATE && sourceDay<=latestClosedBusinessDate()) {
         try { await reconcilePendingDays(); }

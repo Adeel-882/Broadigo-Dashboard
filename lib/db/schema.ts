@@ -177,6 +177,21 @@ export const sales = pgTable("sales", {
   amount: numeric("amount", { precision: 14, scale: 2 }), currency: text("currency").notNull().default("USD"), state: text("state"), zipCodes: text("zip_codes").array(),
 }, (table) => [uniqueIndex("sales_slack_message_unique").on(table.slackMessageId), index("sales_employee_time_idx").on(table.employeeId, table.occurredAt), index("sales_team_time_idx").on(table.teamId, table.occurredAt)]);
 
+/** Source-to-source identity evidence; financial reads use canonical_sales. */
+export const saleMirrorLinks = pgTable("sale_mirror_links", {
+  saleId: uuid("sale_id").primaryKey().references(() => sales.id),
+  anchorSaleId: uuid("anchor_sale_id").notNull().references(() => sales.id),
+  reason: text("reason").notNull().default("CONFIRMED_MIRROR_DUPLICATE"),
+  evidence: jsonb("evidence").notNull(),
+  linkedAt: timestamp("linked_at", {withTimezone:true}).notNull().defaultNow(),
+}, table => [uniqueIndex("sale_mirror_links_anchor_sale_id_key").on(table.anchorSaleId)]);
+
+export const saleSourceAvailability = pgTable("sale_source_availability", {
+  saleId: uuid("sale_id").primaryKey().references(() => sales.id),
+  unavailableAt: timestamp("unavailable_at", {withTimezone:true}).notNull(),
+  evidence: jsonb("evidence").notNull(),
+});
+
 export const leads = pgTable("leads", {
   ...activityBase,
   leadType: text("lead_type"), contactName: text("contact_name"), phone: text("phone"), email: text("email"), propertyType: text("property_type"), state: text("state"), timeline: text("timeline"), details: jsonb("details").$type<Record<string, string>>().notNull().default({}),

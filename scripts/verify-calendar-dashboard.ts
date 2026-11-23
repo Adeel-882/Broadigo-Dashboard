@@ -13,8 +13,8 @@ try{
     assert.equal(data.mode,"live");
     const [expected]=await db`select
       (select count(*) from appointments where occurred_at>=${data.range.startDate}::date::timestamp at time zone 'America/Chicago' and occurred_at<(${data.range.endDate}::date+1)::timestamp at time zone 'America/Chicago') appointments,
-      (select count(*) from sales where occurred_at>=${data.range.startDate}::date::timestamp at time zone 'America/Chicago' and occurred_at<(${data.range.endDate}::date+1)::timestamp at time zone 'America/Chicago') sales,
-      (select coalesce(sum(amount),0) from sales where occurred_at>=${data.range.startDate}::date::timestamp at time zone 'America/Chicago' and occurred_at<(${data.range.endDate}::date+1)::timestamp at time zone 'America/Chicago') revenue`;
+      (select count(*) from canonical_sales where occurred_at>=${data.range.startDate}::date::timestamp at time zone 'America/Chicago' and occurred_at<(${data.range.endDate}::date+1)::timestamp at time zone 'America/Chicago') sales,
+      (select coalesce(sum(amount),0) from canonical_sales where occurred_at>=${data.range.startDate}::date::timestamp at time zone 'America/Chicago' and occurred_at<(${data.range.endDate}::date+1)::timestamp at time zone 'America/Chicago') revenue`;
     for(const kind of ["appointments","sales","revenue"] as const)assert.equal(Number(data.metrics.find(m=>m.kind===kind)?.value.replace(/[^\d.-]/g,"")),Number(expected[kind]),`${period}: ${kind}`);
     console.log(JSON.stringify({period,range:data.range,verified:expected}));
   }

@@ -18,6 +18,7 @@ export function classifySlackEnvelope(payload: SlackEnvelope) {
   }
   if(payload.event.type!=="message") return {action:"ignore" as const,reason:"event-type"};
   const message=payload.event as SlackMessageEvent;
+  if(message.subtype==="message_deleted" && ["C098D7NHQ69","C0B1UH7BV9N"].includes(message.channel) && /^\d+\.\d+$/.test(message.deleted_ts??""))return {action:"sale-source-deleted" as const};
   if(message.subtype==="message_deleted" && AUTO_DOCK_CALL_CHANNEL_IDS.some(id=>id===message.channel) && /^\d+\.\d+$/.test(message.deleted_ts??""))return {action:"auto-dock-call-deleted" as const};
   if(message.subtype==="message_deleted" && message.channel==="C098C93DGTY" && /^\d+\.\d+$/.test(message.deleted_ts??""))return {action:"lead-deleted" as const};
   const reply=normalizeSlackThreadReplyEvent(payload.event as SlackMessageEvent);
