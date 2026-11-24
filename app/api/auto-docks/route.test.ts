@@ -7,11 +7,12 @@ describe('automatic audit endpoint',()=>{
   beforeEach(()=>{vi.clearAllMocks();mocks.auth.mockResolvedValue(true);mocks.settings.mockResolvedValue({enabled:true,effectiveFrom:'2026-10-16',reliableFrom:'2026-10-16'});});
   it('reads serially inside one transaction and returns history',async()=>{
     let inFlight=0,max=0,index=0;
-    const execute=vi.fn(async()=>{inFlight++;max=Math.max(max,inFlight);await Promise.resolve();inFlight--;return [[],[{status:'COMPLETED'}],[{employee_id:'a'}],[{n:0}],[{employee_id:'a',status:'voided'}]][index++];});
+    const execute=vi.fn(async()=>{inFlight++;max=Math.max(max,inFlight);await Promise.resolve();inFlight--;return [[],[{status:'COMPLETED'}],[{employee_id:'a'}],[{n:0}],[{employee_id:'a',status:'voided'}],[],[{business_date:'2026-10-16',summary:{evaluated:17},recovered:0}],[{id:'excluded',canonical_name:'Excluded employee'}]][index++];});
     mocks.transaction.mockImplementation(async fn=>fn({execute}));
     const response=await GET(new Request('https://example.test/api/auto-docks?date=2026-10-16'));
-    expect(response.status).toBe(200);expect(max).toBe(1);expect(execute).toHaveBeenCalledTimes(5);expect(mocks.transaction).toHaveBeenCalledTimes(1);
-    expect((await response.json()).docks).toEqual([{employee_id:'a',status:'voided'}]);
+    expect(response.status).toBe(200);expect(max).toBe(1);expect(execute).toHaveBeenCalledTimes(8);expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    const body=await response.json();expect(body.docks).toEqual([{employee_id:'a',status:'voided'}]);
+    expect(body.coverageIncompleteDays).toEqual(['2026-10-16']);expect(body.incompleteHistoryDays).toEqual(['2026-10-16']);expect(body.policyExclusions).toEqual([{id:'excluded',canonical_name:'Excluded employee'}]);
   });
   it('retains authentication and rejects invalid dates',async()=>{
     mocks.auth.mockResolvedValue(false);expect((await GET(new Request('https://example.test/api/auto-docks'))).status).toBe(401);

@@ -16,10 +16,17 @@ describe('complete canonical call-channel coverage',()=>{
     expect((await fetchCallDay('C0BADNJL14L','2026-10-16')).map(m=>m.ts)).toEqual([String(start),String(end-1)]);
     expect(fetchMock.mock.calls[1][0]).toContain('cursor=next');
   });
-  it.each([{ok:false,error:'not_in_channel'},{ok:true,messages:[],has_more:true},{ok:true}])('never certifies unavailable or partial history: %j',async body=>{
+  it.each([{ok:false,error:'not_in_channel'},{ok:true,messages:[],has_more:true},{ok:true,messages:[],is_limited:true},{ok:true}])('never certifies unavailable or partial history: %j',async body=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(body)));
     await expect(syncCallDay('2026-10-16',true)).rejects.toThrow();
     expect(mocks.ingest).not.toHaveBeenCalled();expect(mocks.execute).not.toHaveBeenCalled();
+  });
+  it('proves a limited-history shift only after traversing its start boundary',async()=>{
+    const start=Date.parse('2026-10-16T14:00:00Z')/1000;
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response({ok:true,is_limited:true,messages:[{ts:String(start+1)},{ts:String(start-1)}]})));
+    expect((await fetchCallDay('C098WNHNBR7','2026-10-16')).map(m=>m.ts)).toEqual([String(start+1)]);
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response({ok:true,is_limited:true,messages:[{ts:String(start+1)}]})));
+    await expect(fetchCallDay('C098WNHNBR7','2026-10-16')).rejects.toThrow('coverage incomplete');
   });
   it('fetches all three channels before importing any, so third-channel denial blocks writes',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(response({ok:true,messages:[]})).mockResolvedValueOnce(response({ok:true,messages:[]})).mockResolvedValueOnce(response({ok:false,error:'not_in_channel'})));

@@ -11,14 +11,18 @@ export async function fetchCallDay(channel:string,date:string){
   if(!process.env.SLACK_BOT_TOKEN)throw new Error('Slack token unavailable');
   let cursor='';
   do{
-    const params=new URLSearchParams({channel,oldest:String(+start/1000),latest:String(+end/1000),inclusive:'true',limit:'100',cursor});
+    // Traverse the start boundary rather than treating limited empty history
+    // as evidence of zero calls. Earlier messages are never imported.
+    const params=new URLSearchParams({channel,latest:String(+end/1000),inclusive:'false',limit:'100',cursor});
     const response=await fetch(`https://slack.com/api/conversations.history?${params}`,{headers:{Authorization:`Bearer ${process.env.SLACK_BOT_TOKEN}`},signal:AbortSignal.timeout(15000),cache:'no-store'});
     if(!response.ok)throw new Error(`Call history HTTP ${response.status}; coverage incomplete`);
     const body=await response.json();
     if(!body.ok||!Array.isArray(body.messages))throw new Error(`Call history ${channel}: ${body.error??'invalid response'}`);
     messages.push(...(body.messages as SlackHistoryMessage[]).filter(m=>Number(m.ts)*1000>=+start&&Number(m.ts)*1000<+end));
+    if((body.messages as SlackHistoryMessage[]).some(m=>Number(m.ts)*1000<+start))break;
     cursor=body.response_metadata?.next_cursor??'';
     if((body.has_more&&!cursor)||(cursor&&seen.has(cursor)))throw new Error('Incomplete call history pagination');
+    if(!cursor&&body.is_limited)throw new Error('Limited call history; shift coverage incomplete');
     seen.add(cursor);
   }while(cursor);
   return messages;

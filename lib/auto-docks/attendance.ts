@@ -18,14 +18,18 @@ export async function syncAttendanceDay(date: string) {
   const messages: Message[] = [];
   const seen = new Set<string>();
   do {
-    const params = new URLSearchParams({ channel: settings.generalChannelId, oldest: String(start.getTime()/1000), latest: String(end.getTime()/1000), inclusive: "true", limit: "200", cursor });
+    // Read backwards past the start boundary: a limited empty bounded response
+    // cannot establish that a shift had no attendance.
+    const params = new URLSearchParams({ channel: settings.generalChannelId, latest: String(end.getTime()/1000), inclusive: "false", limit: "200", cursor });
     const response = await fetch(`https://slack.com/api/conversations.history?${params}`, { headers: { authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` }, signal: AbortSignal.timeout(15000), cache: "no-store" });
     if (!response.ok) throw new Error(`Attendance history HTTP ${response.status}`);
-    const body = await response.json() as { ok: boolean; error?: string; messages?: Message[]; has_more?: boolean; response_metadata?: {next_cursor?: string} };
+    const body = await response.json() as { ok: boolean; error?: string; messages?: Message[]; has_more?: boolean; is_limited?: boolean; response_metadata?: {next_cursor?: string} };
     if (!body.ok || !body.messages) throw new Error(`Attendance history unavailable: ${body.error ?? "invalid-response"}`);
     messages.push(...body.messages.filter(m => Number(m.ts)*1000 >= start.getTime() && Number(m.ts)*1000 < end.getTime() && attendanceCandidate(m)));
+    if (body.messages.some(m => Number(m.ts)*1000 < start.getTime())) break;
     cursor = body.response_metadata?.next_cursor ?? "";
     if (body.has_more && !cursor) throw new Error("Incomplete attendance pagination");
+    if (!cursor && body.is_limited) throw new Error("Limited attendance history; shift coverage incomplete");
     if (cursor && seen.has(cursor)) throw new Error("Repeated attendance cursor");
     seen.add(cursor);
   } while (cursor);
