@@ -3,7 +3,7 @@ import { describe,expect,it } from "vitest";
 import { AUTO_DOCK_EMPLOYEE_OVERRIDES, businessWindow,evaluateAutoDockState,isCheckIn,latestClosedBusinessDate,OBSERVED_CHECK_IN_PHRASES,type EvaluationInput } from "./policy";
 import { autoDockBusinessDateFor as operationalDateFor } from "./time";
 
-const base:EvaluationInput={employeeId:"normal",title:"Appointment Setter",active:true,membershipEligible:true,checkInFound:true,attendanceReliable:true,exempt:false,appointments:0,sales:0};
+const base:EvaluationInput={businessDate:"2026-11-23",employeeId:"normal",title:"Appointment Setter",active:true,membershipEligible:true,checkInFound:true,attendanceReliable:true,exempt:false,appointments:0,sales:0};
 describe("attendance-gated automatic docks",()=>{
   it("locks the corrected business amounts independently of shared config",()=>{
     expect(AUTO_DOCK_AMOUNTS).toEqual({appointment_setter_zero_appointments:3000,closer_zero_sales:1500,closer_zero_calls:1500});

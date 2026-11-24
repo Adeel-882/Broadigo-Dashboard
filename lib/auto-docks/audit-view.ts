@@ -1,3 +1,4 @@
+import {isAutoDockWeekend} from "./time";
 export interface AuditEvaluation {
   employee_id:string; evaluated_at:string;business_date?:string;
   evidence:{recovery?:{classification:string;evaluatedAtBasis?:string};employee:string;attendanceStatus:string;appointments:number;sales?:number;role:string;ruleCode?:string;decision:string;amount:number;windowStart?:string;windowEnd?:string;checkIns?:Array<{channel:string;ts:string}>;calls?:Array<{channel:string;name:string;ts:string}>};
@@ -8,7 +9,8 @@ export function auditRows(evaluations:AuditEvaluation[],docks:AuditDock[]){
   const rank:Record<string,number>={Docked:0,Voided:1,'Admin deleted':1,'No dock':2,Skipped:3,Excluded:4,Exempt:4};
   return evaluations.map(row=>{
     const e=row.evidence,history=docks.filter(d=>d.employee_id===row.employee_id&&d.business_date===row.business_date),active=history.filter(d=>d.status==='active');
-    const decision=e.decision==='SKIP_EXCLUDED'?'Excluded':e.decision==='SKIP_EXEMPT'?'Exempt':active.length?'Docked':history.some(d=>d.status==='admin_deleted')?'Admin deleted':e.decision.startsWith('SKIP')?'Skipped':e.decision==='ACTIVITY_RECORDED'?'No dock':history.some(d=>d.status==='voided')?'Voided':'No dock';
-    return {...row,key:`${row.business_date}:${row.employee_id}`,history,decision,amount:active.reduce((sum,d)=>sum+Number(d.amount),0),role:e.role==='SETTER'?'Setter':e.role==='CLOSER'?'Closer':e.decision==='SKIP_EXCLUDED'?'Head of Sales':e.role,attendance:e.attendanceStatus==='BYPASSED'?'Bypass':e.attendanceStatus.charAt(0)+e.attendanceStatus.slice(1).toLowerCase()};
+    const weekend=Boolean(row.business_date&&isAutoDockWeekend(row.business_date));
+    const decision=weekend?'Excluded':e.decision==='SKIP_EXCLUDED'?'Excluded':e.decision==='SKIP_EXEMPT'?'Exempt':active.length?'Docked':history.some(d=>d.status==='admin_deleted')?'Admin deleted':e.decision.startsWith('SKIP')?'Skipped':e.decision==='ACTIVITY_RECORDED'?'No dock':history.some(d=>d.status==='voided')?'Voided':'No dock';
+    return {...row,key:`${row.business_date}:${row.employee_id}`,history,decision,weekend,amount:weekend?0:active.reduce((sum,d)=>sum+Number(d.amount),0),role:e.role==='SETTER'?'Setter':e.role==='CLOSER'?'Closer':e.decision==='SKIP_EXCLUDED'?'Head of Sales':e.role,attendance:e.attendanceStatus==='BYPASSED'?'Bypass':e.attendanceStatus.charAt(0)+e.attendanceStatus.slice(1).toLowerCase()};
   }).sort((a,b)=>(b.business_date??'').localeCompare(a.business_date??'')||rank[a.decision]-rank[b.decision]||a.evidence.employee.localeCompare(b.evidence.employee));
 }

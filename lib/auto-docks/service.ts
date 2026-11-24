@@ -1,3 +1,4 @@
+import {isAutoDockWeekend} from "./time";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { autoRole, businessWindow, evaluateAutoDockState, FIRST_APPROVED_BUSINESS_DATE, AUTO_DOCK_CALL_CHANNEL_IDS, AUTO_DOCK_EXCLUDED_EMPLOYEE_IDS, isAutoDockExcluded } from "./policy";
@@ -17,6 +18,10 @@ export async function evaluateBusinessDay(date:string, apply=false, now=new Date
   if(apply&&!settings.callsRuleEffectiveFrom)throw new Error("Call policy migration required before financial writes");
   if(apply&&settings.callsRuleEffectiveFrom&&date<settings.callsRuleEffectiveFrom)return {businessDate:date,apply,reliable:false,activationDate:settings.effectiveFrom,enabled:settings.enabled,evaluated:0,created:0,existing:0,voided:0,evaluations:[],historicalPreserved:true};
   if(apply&&(date<FIRST_APPROVED_BUSINESS_DATE||!settings.enabled||!settings.effectiveFrom||date<settings.effectiveFrom||!settings.reliableFrom||date<settings.reliableFrom||!settings.phrases.length||end>now))throw new Error("Automatic dock writes disabled, outside approved dates, or business day incomplete");
+  if(isAutoDockWeekend(date)) {
+    if(apply) await db.execute(sql`insert into auto_dock_runs(business_date,status,completed_at,summary) values(${date}::date,'COMPLETED',now(),${JSON.stringify({decision:'WEEKEND_EXCLUDED',evaluated:0,created:0,existing:0,voided:0})}::jsonb)`);
+    return {businessDate:date,apply,reliable:false,activationDate:settings.effectiveFrom,enabled:settings.enabled,evaluated:0,created:0,existing:0,voided:0,evaluations:[],decision:'WEEKEND_EXCLUDED',historicalPreserved:true};
+  }
   const [run]=apply?resultRows(await db.execute(sql`insert into auto_dock_runs(business_date,status) values(${date}::date,'RUNNING') returning id`)):[];
   try {
     return await db.transaction(async tx=>{
@@ -44,7 +49,7 @@ export async function evaluateBusinessDay(date:string, apply=false, now=new Date
       people.push(...excluded.map(p=>({...p,check_ins:[],calls:[],sales:0})));
       const evaluations=people.filter(p=>isAutoDockExcluded(String(p.id))||p.previously_evaluated||autoRole(String(p.id),String(p.job_title))!=="OTHER").map(p=>{
         const checkIns=p.check_ins as Array<{channel:string;ts:string}>;
-        const input={employeeId:String(p.id),title:String(p.job_title),active:p.active===true,membershipEligible:p.membership_eligible===true,exempt:p.exempt===true,attendanceReliable:reliable,checkInFound:checkIns.length>0,appointments:(p.calls as unknown[]).length,sales:Number(p.sales)};
+        const input={businessDate:date,employeeId:String(p.id),title:String(p.job_title),active:p.active===true,membershipEligible:p.membership_eligible===true,exempt:p.exempt===true,attendanceReliable:reliable,checkInFound:checkIns.length>0,appointments:(p.calls as unknown[]).length,sales:Number(p.sales)};
         return {...input,...evaluateAutoDockState(input),calls:p.calls as Array<{channel:string;name:string;ts:string}>,policyVersion:"posted_calls_shift_v3",employee:String(p.canonical_name),businessDate:date,windowStart:start.toISOString(),windowEnd:end.toISOString(),checkIns};
       });
       let created=0,existing=0,voided=0;

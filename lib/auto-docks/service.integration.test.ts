@@ -10,7 +10,7 @@ import {editAutomaticDock} from './edit-service';
 // Every writable relation/function is session-temporary; production is read-only.
 describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in temporary PostgreSQL tables",()=>{
   let db:ReturnType<typeof postgres>,setter:string,closer:string,setterUser:string,closerUser:string,baseline:string;
-  const dameon="d2bf73cc-c9f6-48a8-be72-61b827e39619",harvey="03cfda43-9721-41e0-b7fe-60f40538aa29",day="2026-10-17",now=new Date("2026-10-18T00:10:00Z");
+  const dameon="d2bf73cc-c9f6-48a8-be72-61b827e39619",harvey="03cfda43-9721-41e0-b7fe-60f40538aa29",day="2026-10-19",now=new Date("2026-10-20T00:10:00Z");
   beforeAll(async()=>{
     process.loadEnvFile(".env.local");
     db=postgres(process.env.DATABASE_URL!,{max:1,prepare:false,idle_timeout:0,max_lifetime:0});
@@ -35,7 +35,7 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     for(const [stamp,expected] of [['2026-10-20T13:59:59Z',null],['2026-10-20T14:00:00Z','2026-10-20'],['2026-10-20T22:59:59Z','2026-10-20'],['2026-10-20T23:00:00Z',null]])expect((await db`select pg_temp.auto_dock_business_date(${stamp}::timestamptz)::text as business_date`)[0].business_date).toBe(expected);
     const management=readFileSync('drizzle/0014_auto_dock_management_overrides.sql','utf8').replaceAll('CREATE TABLE ','CREATE TEMPORARY TABLE ').replaceAll('CREATE VIEW ','CREATE TEMPORARY VIEW ').replaceAll('FUNCTION preserve_auto_dock_edit_history()','FUNCTION pg_temp.preserve_auto_dock_edit_history()');
     await db.begin(async tx=>{await tx.unsafe(management);});
-    await db`insert into auto_dock_call_coverage select d::date,'T098UDG2RED',channel_id,now(),0 from auto_dock_call_sources cross join unnest(array['2026-10-16','2026-10-17']) d`;
+    await db`insert into auto_dock_call_coverage select d::date,'T098UDG2RED',channel_id,now(),0 from auto_dock_call_sources cross join unnest(array['2026-10-16','2026-10-19']) d`;
     await db`update auto_dock_settings set calls_rule_effective_from=${day}`;
     await db`create trigger test_appointment after insert or update or delete on pg_temp.appointments for each row execute function pg_temp.queue_auto_dock_activity()`;
     await db`insert into attendance_coverage values(${day},'T098UDG2RED','C0980E2DWAK',now(),1)`;
@@ -48,8 +48,8 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
   afterAll(async()=>{if(db){try{if(baseline)expect(JSON.stringify(await db`select (select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.docks d) manual,(select md5(string_agg(to_jsonb(d)::text,'' order by id)) from public.automatic_docks d) automatic`)).toBe(baseline);}finally{await db.end({timeout:5});}}});
   async function call(user:string,owner:string,channel="C098WNHNBR7"){
     const [sm]=await db`insert into slack_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,raw_text,posted_at,parser_type,parser_status)
-      select 'T098UDG2RED',id,${crypto.randomUUID()},${user},${owner},'canonical fixture','2026-10-17T21:00:00Z',parser_type,'PARSED' from slack_channels where slack_channel_id=${channel} returning id`;
-    await db`insert into appointments(slack_message_id,employee_id,occurred_at,scheduled_at,confidence,assigned_person) values(${sm.id},${owner},'2026-10-17T21:00:00Z','2026-10-22T10:00:00Z',1,${closerUser})`;
+      select 'T098UDG2RED',id,${crypto.randomUUID()},${user},${owner},'canonical fixture','2026-10-19T21:00:00Z',parser_type,'PARSED' from slack_channels where slack_channel_id=${channel} returning id`;
+    await db`insert into appointments(slack_message_id,employee_id,occurred_at,scheduled_at,confidence,assigned_person) values(${sm.id},${owner},'2026-10-19T21:00:00Z','2026-10-22T10:00:00Z',1,${closerUser})`;
     return String(sm.id);
   }
   it("preserves history, counts authors only, ignores sales and reconciles calls idempotently",async()=>{
@@ -59,7 +59,7 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     expect(r.evaluations.find(e=>e.employeeId===closer)?.decision).toBe("SKIP_ABSENT");
     expect(r.evaluations.find(e=>e.employeeId===dameon)).toMatchObject({decision:"SKIP_EXCLUDED",ruleCode:null,amount:0});
     expect(r.evaluations.find(e=>e.employeeId===harvey)).toMatchObject({role:"SETTER",amount:3000,attendanceRequired:false});
-    for(const id of [setter,closer])await db`insert into attendance_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,source_at,raw_text,is_check_in) values('T098UDG2RED','C0980E2DWAK',${id},'fixture',${id},'2026-10-17T14:00:00Z','check in',true)`;
+    for(const id of [setter,closer])await db`insert into attendance_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,source_at,raw_text,is_check_in) values('T098UDG2RED','C0980E2DWAK',${id},'fixture',${id},'2026-10-19T14:00:00Z','check in',true)`;
     r=await evaluateBusinessDay(day,true,now);expect(r.evaluations.find(e=>e.employeeId===closer)).toMatchObject({ruleCode:"closer_zero_calls",amount:1500});
     expect(r.evaluations.find(e=>e.employeeId===setter)?.amount).toBe(3000);
     await evaluateBusinessDay(day,true,now);
@@ -70,8 +70,8 @@ describe.skipIf(process.env.AUTO_DOCK_DB_TEST!=="1")("posted-call evaluator in t
     expect(r.evaluations.find(e=>e.employeeId===setter)).toMatchObject({appointments:1,amount:0});
     expect(r.evaluations.find(e=>e.employeeId===closer)).toMatchObject({appointments:0,amount:1500});
     await db`delete from auto_dock_pending`;
-    const [sm]=await db`insert into slack_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,raw_text,posted_at,parser_type,parser_status) select 'T098UDG2RED',id,'sale',${closerUser},${closer},'fixture','2026-10-17T15:00:00Z',parser_type,'PARSED' from public.slack_channels where name='sales-reporting' returning id`;
-    await db`insert into sales(slack_message_id,employee_id,occurred_at,confidence,amount) values(${sm.id},${closer},'2026-10-17T15:00:00Z',1,10000)`;
+    const [sm]=await db`insert into slack_messages(workspace_id,channel_id,slack_ts,slack_user_id,employee_id,raw_text,posted_at,parser_type,parser_status) select 'T098UDG2RED',id,'sale',${closerUser},${closer},'fixture','2026-10-19T15:00:00Z',parser_type,'PARSED' from public.slack_channels where name='sales-reporting' returning id`;
+    await db`insert into sales(slack_message_id,employee_id,occurred_at,confidence,amount) values(${sm.id},${closer},'2026-10-19T15:00:00Z',1,10000)`;
     await db`update sales set amount=20000`;await db`delete from sales`;
     expect(Number((await db`select count(*) n from auto_dock_pending`)[0].n)).toBe(0);
     r=await evaluateBusinessDay(day,true,now);expect(r.evaluations.find(e=>e.employeeId===closer)?.amount).toBe(1500);

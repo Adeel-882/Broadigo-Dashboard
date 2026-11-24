@@ -24,3 +24,10 @@ export function latestClosedBusinessDate(now = new Date()) {
 export function formatAutoDockTime(value?: string) {
   return value ? new Intl.DateTimeFormat("en-US", {timeZone:AUTO_DOCK_TIME_ZONE,month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(new Date(value)) : "Not recorded";
 }
+
+/** The supplied date is already the Karachi shift-start date, not a timestamp. */
+export function isAutoDockWeekend(date: string) {
+  businessWindow(date); // Validate the canonical date before examining its weekday.
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}

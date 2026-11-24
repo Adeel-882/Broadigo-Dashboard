@@ -1,3 +1,4 @@
+import {isAutoDockWeekend} from "./time";
 export { businessWindow, latestClosedBusinessDate } from "./time";
 
 /** Explicit management approval. Never backdate financial creation. */
@@ -39,11 +40,12 @@ export function isCheckIn(text: string, approvedPhrases: string[]) {
   return approvedPhrases.some(phrase => normalizeCheckIn(phrase)===normalizeCheckIn(text));
 }
 export interface EvaluationInput {
-  employeeId: string; title: string; active: boolean; membershipEligible: boolean;
+  businessDate: string; employeeId: string; title: string; active: boolean; membershipEligible: boolean;
   checkInFound: boolean; attendanceReliable: boolean; exempt: boolean;
   appointments: number; sales: number;
 }
 export function evaluateAutoDockState(input: EvaluationInput) {
+  if(isAutoDockWeekend(input.businessDate)) return {role:autoRole(input.employeeId,input.title),ruleCode:null,attendanceRequired:false,attendanceStatus:"EXCLUDED",decision:"WEEKEND_EXCLUDED",amount:0,reason:"Weekend business date — automatic inactivity docking not applicable"};
   // Exclusion precedes role, attendance and activity evaluation, not a bypass.
   if(isAutoDockExcluded(input.employeeId))return {role:autoRole(input.employeeId,input.title),ruleCode:null,attendanceRequired:false,attendanceStatus:"EXCLUDED",decision:"SKIP_EXCLUDED",amount:0,reason:"Automatic dock exemption"};
   const role=autoRole(input.employeeId,input.title);

@@ -43,7 +43,7 @@ try {
       for(const date of dates){
         await tx`select pg_advisory_xact_lock(hashtext('auto-docks:'||${date.date}))`;
         const {start,end}=businessWindow(date.date);
-        const evidence={...evaluateAutoDockState({employeeId:id,title:'Closer',active:true,membershipEligible:true,checkInFound:false,attendanceReliable:false,exempt:false,appointments:0,sales:0}),employeeId:id,employee:'Jordan Reid',title:'Closer',businessDate:date.date,windowStart:start.toISOString(),windowEnd:end.toISOString(),calls:[],checkIns:[],appointments:0,policyVersion:'jordan_management_exemption_v1'};
+        const evidence={...evaluateAutoDockState({businessDate:date.date,employeeId:id,title:'Closer',active:true,membershipEligible:true,checkInFound:false,attendanceReliable:false,exempt:false,appointments:0,sales:0}),employeeId:id,employee:'Jordan Reid',title:'Closer',businessDate:date.date,windowStart:start.toISOString(),windowEnd:end.toISOString(),calls:[],checkIns:[],appointments:0,policyVersion:'jordan_management_exemption_v1'};
         const inserted=await tx`insert into auto_dock_evaluations(run_id,employee_id,business_date,evidence) select ${date.id},${id},${date.date}::date,${tx.json(evidence)} where not exists(select 1 from auto_dock_evaluations where employee_id=${id} and business_date=${date.date}::date and evidence->>'policyVersion'='jordan_management_exemption_v1') returning id`;
         appended+=inserted.length;
       }
