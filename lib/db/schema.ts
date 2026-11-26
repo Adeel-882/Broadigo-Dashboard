@@ -192,6 +192,20 @@ export const saleSourceAvailability = pgTable("sale_source_availability", {
   evidence: jsonb("evidence").notNull(),
 });
 
+export const saleSourceDeletions = pgTable("sale_source_deletions", {
+  workspaceId: text("workspace_id").notNull(), channelId: text("channel_id").notNull(), slackTs: text("slack_ts").notNull(),
+  deletedAt: timestamp("deleted_at", {withTimezone:true}),
+  observedAt: timestamp("observed_at", {withTimezone:true}).notNull().defaultNow(),
+  evidence: jsonb("evidence").notNull(),
+}, t => [primaryKey({columns:[t.workspaceId,t.channelId,t.slackTs]})]);
+
+export const saleSourceResolutions = pgTable("sale_source_resolutions", {
+  saleId: uuid("sale_id").primaryKey().references(()=>sales.id),
+  replacementSaleId: uuid("replacement_sale_id").notNull().references(()=>sales.id),
+  evidence: jsonb("evidence").notNull(),
+  resolvedAt: timestamp("resolved_at", {withTimezone:true}).notNull().defaultNow(),
+});
+
 export const leads = pgTable("leads", {
   ...activityBase,
   leadType: text("lead_type"), contactName: text("contact_name"), phone: text("phone"), email: text("email"), propertyType: text("property_type"), state: text("state"), timeline: text("timeline"), details: jsonb("details").$type<Record<string, string>>().notNull().default({}),

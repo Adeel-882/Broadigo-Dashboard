@@ -203,3 +203,18 @@ describe("Slack parser registry", () => {
     expect(parserRegistry.parse("dock", input("Dock reported for late attendance"))).toBeNull();
   });
 });
+
+describe('observed markdown sale price',()=>{
+  it.each(['-*1500','-$1500','-$400','799$','$1,500'])('parses plan price %s without ZIP contamination',price=>{
+    const result=parserRegistry.parse('leadsedge-sale',input(`Christopher Fry/Mickie Fry *|* <mailto:test@example.com|test@example.com> *| Edge Executive Plan ${price} *| PA | ZIPs:* 15668, 15642`));
+    expect(result?.values.amount).toBe(price.includes('400')?400:price.includes('799')?799:1500);
+    expect(result?.values.customerName).toBe('Christopher Fry/Mickie Fry');
+  });
+  it('does not take a ZIP or property price as bare plan revenue',()=>{
+    for(const tail of ['| ZIPs: 15668','-400K | ZIPs: 15668','| Min. Price Point $400K']) {
+      expect(parserRegistry.parse('leadsedge-sale',input(`Customer | <mailto:test@example.com|test@example.com> | Edge Executive Plan ${tail}`))?.values.amount).toBeNull();
+    }
+  });
+});
+
+it.each([["-$14'99",1499],["_$1'500_",1500]])('preserves observed digit separators %s',(price,amount)=>{expect(parserRegistry.parse('leadsedge-sale',input(`Customer | <mailto:test@example.com|test@example.com> | Edge Executive Plan ${price} | ZIPs: 15668`))?.values.amount).toBe(amount);});

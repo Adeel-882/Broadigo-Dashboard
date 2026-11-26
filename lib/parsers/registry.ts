@@ -48,7 +48,7 @@ class SaleParser implements SlackMessageParser {
     const warnings = amount == null
       ? apparentPlanPrice ? ["price_parse_failed", "needs_review: recognized sale plan has an unparsed price token"] : ["Sale amount missing in source message"]
       : [];
-    return { recordType: "SALE", rawSourceId: input.rawSourceId, confidence: amount == null ? 0.82 : 0.96, warnings, values: { customerName: first(f, "customer", "client", "name") ?? input.text.match(/^\s*([^<|\n]+?)\s*<tel:/)?.[1]?.trim() ?? null, phone, email, packageName, amount, currency: first(f, "currency") ?? (input.text.includes("PKR") ? "PKR" : "USD"), state: first(f, "state") ?? input.text.match(/\|\s*([A-Z]{2})\s*\|/)?.[1] ?? null, zipCodes: [...zipText.matchAll(/\b\d{5}\b/g)].map((match) => match[0]) } };
+    return { recordType: "SALE", rawSourceId: input.rawSourceId, confidence: amount == null ? 0.82 : 0.96, warnings, values: { customerName: first(f, "customer", "client", "name") ?? normalizeSlackText(input.text).match(/^\s*([^<|\n]+?)\s*\|\s*<mailto:/)?.[1]?.trim() ?? input.text.match(/^\s*([^<|\n]+?)\s*<tel:/)?.[1]?.trim() ?? null, phone, email, packageName, amount, currency: first(f, "currency") ?? (input.text.includes("PKR") ? "PKR" : "USD"), state: first(f, "state") ?? input.text.match(/\|\s*([A-Z]{2})\s*\|/)?.[1] ?? null, zipCodes: [...zipText.matchAll(/\b\d{5}\b/g)].map((match) => match[0]) } };
   }
 }
 
@@ -58,11 +58,13 @@ class SaleParser implements SlackMessageParser {
  * unrelated fields like `Min. Price Point $400K` elsewhere in the message.
  */
 export function salePriceFromPlanSegment(text: string) {
-  const match = text.match(/\b(?:Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan|Essential\s+Plan\s+Residential)(?:\s*\([^|\n)]{1,30}\)|\s+Half)?[^\d$|\n]{0,20}[|:\-\s]{0,8}(?:-\s*)?(?:\$\s*([\d,]+(?:\.\d+)?)(?![\d,]|\s*[KM]\b)|([\d,]+(?:\.\d+)?)(?![\d,])\s*(?:\$|USD\b)(?!\s*[KM]\b))/i);
+  text = normalizeSlackText(text).replace(/(?<=\d)['’](?=\d)/g, "");
+  const match = text.match(/\b(?:Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan|Essential\s+Plan\s+Residential)(?:\s*\([^|\n)]{1,30}\)|\s+Half)?[^\d$|\n]{0,20}[|:\-\s]{0,8}(?:-\s*)?(?:\$\s*([\d,]+(?:\.\d+)?)(?![\d,.]|\s*[KM]\b)|([\d,]+(?:\.\d+)?)(?![\d,])\s*(?:\$|USD\b)(?!\s*[KM]\b))/i);
   // Observed canonical sales omit "Plan": Edge Executive - $1250.
   // Require the adjacent price; never consume onboarding/property-price text.
   const value = match?.[1] ?? match?.[2] ?? text.match(/\bEdge\s+Executive\s*-\s*\$\s*([\d,]+(?:\.\d+)?)(?![\d,.]|\s*[KM]\b)/i)?.[1] ?? null;
-  return value?.replace(/,/g, "") ?? null;
+  const barePrice = text.match(/\b(?:Edge\s+[A-Za-z][A-Za-z\s-]*?\s+Plan|Essential\s+Plan\s+Residential)\s*-\s*([\d,]+(?:\.\d{1,2})?)\s*(?=\||\n|$)/i)?.[1];
+  return (value ?? barePrice)?.replace(/,/g, "") ?? null;
 }
 
 // Evidenced ISA phone labels. Longer labels lead the alternation so it cannot stop early on "phone" or "contact".
